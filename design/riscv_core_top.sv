@@ -184,7 +184,7 @@ module riscv_core_top (
         .src1_value(dispatch_src1), .src1_tag(rat_src1_phys), .src1_valid(1'b1),
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(1'b1),
         .immediate(dispatch_imm), .alu_op(dispatch_alu_op),
-        .dispatch_valid(dispatch_valid && (decode_instr_type == `ITYPE_ALU || decode_instr_type == `ITYPE_ALU_IMM)),
+        .dispatch_valid(dispatch_valid && (decode_instr_type == `IBASE_ALU || decode_instr_type == `IBASE_ALU_IMM)),
         .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
         .operand1(alu_op1), .operand2(alu_op2), .execute_op(alu_operation),
         .execute_valid(alu_valid), .rs_full(alu_rs_full), .assigned_tag(alu_tag));
@@ -195,7 +195,7 @@ module riscv_core_top (
         .src1_value(dispatch_src1), .src1_tag(rat_src1_phys), .src1_valid(1'b1),
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(1'b1),
         .immediate(dispatch_imm), .alu_op(dispatch_alu_op),
-        .dispatch_valid(dispatch_valid && (decode_instr_type == `ITYPE_LOAD || decode_instr_type == `ITYPE_STORE)),
+        .dispatch_valid(dispatch_valid && (decode_instr_type == `IBASE_LOAD || decode_instr_type == `IBASE_STORE)),
         .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
         .operand1(mem_op1), .operand2(mem_op2), .execute_op(mem_operation),
         .execute_valid(mem_valid), .rs_full(mem_rs_full), .assigned_tag(mem_tag));
@@ -206,7 +206,7 @@ module riscv_core_top (
         .src1_value(dispatch_src1), .src1_tag(rat_src1_phys), .src1_valid(1'b1),
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(1'b1),
         .immediate(dispatch_imm), .alu_op(dispatch_alu_op),
-        .dispatch_valid(dispatch_valid && (decode_instr_type == `ITYPE_MUL)),
+        .dispatch_valid(dispatch_valid && (decode_instr_type == `M_EXT_MUL)),
         .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
         .operand1(mul_op1), .operand2(mul_op2), .execute_op(),
         .execute_valid(mul_valid), .rs_full(mul_rs_full), .assigned_tag(mul_tag));
@@ -217,7 +217,7 @@ module riscv_core_top (
         .src1_value(dispatch_src1), .src1_tag(rat_src1_phys), .src1_valid(1'b1),
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(1'b1),
         .immediate(dispatch_imm), .alu_op(dispatch_alu_op),
-        .dispatch_valid(dispatch_valid && (decode_instr_type == `ITYPE_DIV)),
+        .dispatch_valid(dispatch_valid && (decode_instr_type == `M_EXT_DIV)),
         .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
         .operand1(div_op1), .operand2(div_op2), .execute_op(),
         .execute_valid(div_valid), .rs_full(div_rs_full), .assigned_tag(div_tag));
@@ -228,7 +228,7 @@ module riscv_core_top (
         .src1_value(dispatch_src1), .src1_tag(rat_src1_phys), .src1_valid(1'b1),
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(1'b1),
         .immediate(dispatch_imm), .alu_op(dispatch_alu_op),
-        .dispatch_valid(dispatch_valid && (decode_instr_type == `ITYPE_VEC)),
+        .dispatch_valid(dispatch_valid && (decode_instr_type == `V_EXT_VEC)),
         .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
         .operand1(vec_op1[XLEN-1:0]), .operand2(vec_op2[XLEN-1:0]), .execute_op(vec_operation),
         .execute_valid(vec_valid), .rs_full(vec_rs_full), .assigned_tag(vec_tag));
@@ -303,7 +303,7 @@ module riscv_core_top (
     
     branch_predictor branch_pred_inst (.clk(clk), .rst_n(rst_n), .pc(fetch_pc),
         .predicted_target(branch_target), .actual_target(32'h0),
-        .is_branch(decode_instr_type == `ITYPE_BRANCH), .branch_taken(1'b0),
+        .is_branch(decode_instr_type == `IBASE_BRANCH), .branch_taken(1'b0),
         .branch_mispredict(branch_mispredict));
     
     exception_handler exc_handler (.clk(clk), .rst_n(rst_n), .ext_irq(ext_irq),
