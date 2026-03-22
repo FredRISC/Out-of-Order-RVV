@@ -13,7 +13,7 @@ module fetch_stage #(
     input rst_n,
     input stall,
     input flush,
-    input [XLEN-1:0] branch_target,
+    input [XLEN-1:0] flush_pc,
     
     output reg [XLEN-1:0] pc_out,
     output reg [INST_WIDTH-1:0] instr_out,
@@ -32,9 +32,9 @@ module fetch_stage #(
             pc_current <= 32'h0;
             valid_out <= 1'b0;
         end else if (flush) begin
-            // On flush, update PC to branch target and invalidate output.
+            // On flush, update PC to requested target and invalidate output.
             // This will cause the target instruction to be fetched in the next cycle.
-            pc_current <= branch_target;
+            pc_current <= flush_pc;
             valid_out <= 1'b0;
         end else if (!stall && imem_valid) begin
             // Fetch new instruction if not stalled and instruction memory is valid

@@ -27,10 +27,11 @@ module free_list (
     always @(*) begin
         alloc_phys = 6'h0;
         alloc_valid = 1'b0;
-        for (int i = 32; i < NUM_PHYS_REGS; i++) begin  // Skip arch regs 0-31
+        // Search all registers except p0 (which is permanently mapped to x0)
+        for (int i = 1; i < NUM_PHYS_REGS; i++) begin
             if (free_bits[i]) begin
-                alloc_phys = i[5:0];
-                alloc_valid = 1'b1;
+                alloc_phys = i[5:0]; // Allocate this physical register
+                alloc_valid = 1'b1; // Found a free physical register
                 break;
             end
         end
@@ -39,7 +40,7 @@ module free_list (
     // Sequential: allocate and free
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            // All phys regs 32-63 are free initially
+            // All phys regs 32-63 are free initially (0-31 are initially mapped to arch regs in RAT)
             free_bits <= 64'hFFFFFFFF_00000000;
         end else begin
             if (alloc_req && alloc_valid)

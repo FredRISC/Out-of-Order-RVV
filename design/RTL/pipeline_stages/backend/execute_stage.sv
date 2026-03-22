@@ -28,30 +28,31 @@ module execute_stage #(
     input [XLEN-1:0] alu_op1, alu_op2,
     input [3:0] alu_operation,
     input alu_valid,
-    input [3:0] alu_tag,
+    input [5:0] alu_tag,
     
     input [XLEN-1:0] mem_op1, mem_op2,
     input [3:0] mem_operation,
     input mem_valid,
-    input [3:0] mem_tag,
+    input [5:0] mem_tag,
     input [LSQ_TAG_WIDTH-1:0] mem_lsq_tag, // LSQ Entry Tag
     
     input [XLEN-1:0] mul_op1, mul_op2,
     input mul_valid,
-    input [3:0] mul_tag,
+    input [5:0] mul_tag,
     
     input [XLEN-1:0] div_op1, div_op2,
     input div_valid,
-    input [3:0] div_tag,
+    input [5:0] div_tag,
     
     input [VLEN-1:0] vec_op1, vec_op2,
     input [3:0] vec_operation,
     input vec_valid,
-    input [3:0] vec_tag,
+    input [5:0] vec_tag,
     
     // LSQ Tunneling (Dispatch <-> LSQ)
     input lsq_alloc_req,
     input lsq_alloc_is_store,
+    input [2:0] lsq_alloc_size,
     input [5:0] alloc_phys_tag,
     output [LSQ_TAG_WIDTH-1:0] alloc_tag,
     output lsq_full,
@@ -67,15 +68,25 @@ module execute_stage #(
     output [XLEN-1:0] dmem_write_addr,
     output [XLEN-1:0] dmem_write_data,
     output dmem_write_en,
+    input dmem_write_ready,
     output [3:0] dmem_be,
     
     // Commit Signal for Store
     input commit_lsq,
     
-    // Common Data Bus Output (ONE result per cycle via CDB arbitration)
-    output [XLEN-1:0] cdb_result,
-    output [7:0] cdb_tag,
-    output cdb_valid
+    // Pipeline Flush Request from LSQ (Memory Disambiguation Violation)
+    output lsq_flush,
+    output [5:0] lsq_violation_tag,
+    
+    // CDB 0 Broadcast Interface (Scheduled - ALU/MUL/VEC)
+    output logic [XLEN-1:0] cdb0_result,
+    output logic [5:0] cdb0_tag,
+    output logic cdb0_valid,
+    
+    // CDB 1 Broadcast Interface (Unscheduled - LSQ/DIV)
+    output logic [XLEN-1:0] cdb1_result,
+    output logic [5:0] cdb1_tag,
+    output logic cdb1_valid
 );
 
     // ========================================================================
@@ -84,27 +95,26 @@ module execute_stage #(
     
     // ALU FU outputs (can have multiple ALUs)
     logic [XLEN-1:0] alu_results [NUM_ALU_FUS-1:0];
-    logic [3:0] alu_tags [NUM_ALU_FUS-1:0];
+    logic [5:0] alu_tags [NUM_ALU_FUS-1:0];
     logic alu_valids [NUM_ALU_FUS-1:0];
     
     // MUL FU outputs (can have multiple multipliers)
     logic [XLEN-1:0] mul_results [NUM_MUL_FUS-1:0];
-    logic [3:0] mul_tags [NUM_MUL_FUS-1:0];
+    logic [5:0] mul_tags [NUM_MUL_FUS-1:0];
     logic mul_valids [NUM_MUL_FUS-1:0];
     
     // DIV FU outputs (can have multiple dividers)
     logic [XLEN-1:0] div_results [NUM_DIV_FUS-1:0];
-    logic [3:0] div_tags [NUM_DIV_FUS-1:0];
+    logic [5:0] div_tags [NUM_DIV_FUS-1:0];
     logic div_valids [NUM_DIV_FUS-1:0];
     
     // LSU output
     logic [XLEN-1:0] lsu_result;
-    logic [3:0] lsu_tag;
     logic lsu_valid;
     
     // VEU output
     logic [XLEN-1:0] vec_result;
-    logic [3:0] vec_result_tag;
+    logic [5:0] vec_result_tag;
     logic vec_result_valid;
 
     // ========================================================================
@@ -213,6 +223,7 @@ module execute_stage #(
         // Dispatch Allocation Interface (handled in Top/Dispatch, wired separately)
         .alloc_req(lsq_alloc_req), 
         .alloc_is_store(lsq_alloc_is_store),
+        .alloc_size(lsq_alloc_size),
         .dispatch_phys_tag(alloc_phys_tag),
         .alloc_tag(alloc_tag),
         .lsq_full(lsq_full),
@@ -226,8 +237,8 @@ module execute_stage #(
         
         // Result Interface
         .cdb_phys_tag_out(lsu_tag_extended), 
-        .load_data(lsu_result),
-        .load_data_valid(lsu_valid),
+        .lsq_data_out(lsu_result),
+        .lsq_out_valid(lsu_valid),
         
         .commit_lsq(commit_lsq), // Retire load/store
         
@@ -240,17 +251,17 @@ module execute_stage #(
         .dmem_write_addr(dmem_write_addr),
         .dmem_write_data(dmem_write_data),
         .dmem_write_en(dmem_write_en),
+        .dmem_write_ready(dmem_write_ready),
+        .dmem_be(dmem_be), // Let LSQ control byte enables
         
-        .flush_pipeline(), // Not connected yet
+        .flush_pipeline(lsq_flush), // Connected to trigger pipeline flush
+        .lsq_violation_tag(lsq_violation_tag),
         
         // Status
         .load_blocked(),
         .store_blocked()
     );
     
-    assign lsu_tag = lsu_tag_extended[3:0]; // Cast to 4 bits for internal signals, but CDB uses extended
-    assign dmem_be = 4'b1111; // Default to full word for now
-
     // ========================================================================
     // Vector Execution Unit (Single)
     // ========================================================================
@@ -265,8 +276,8 @@ module execute_stage #(
         .rst_n(rst_n),
         .vl(32'd16),
         .vtype(32'h0),
-        .vec_src1({{(VLEN-XLEN){1'b0}}, vec_op1}),
-        .vec_src2({{(VLEN-XLEN){1'b0}}, vec_op2}),
+        .vec_src1(vec_op1),
+        .vec_src2(vec_op2),
         .vec_op(vec_operation),
         .vec_valid(vec_valid),
         .vec_result(vec_result),
@@ -289,7 +300,7 @@ module execute_stage #(
     // Priority: ALU > LSU > MUL > DIV > VEU
     
     logic [XLEN-1:0] alu_result_selected;
-    logic [3:0] alu_tag_selected;
+    logic [5:0] alu_tag_selected;
     logic alu_result_valid;
     
     // Select from any ALU that has valid result
@@ -308,53 +319,84 @@ module execute_stage #(
         end
     end
     
-    // CDB Arbitration with priority
+    logic [XLEN-1:0] mul_result_selected;
+    logic [5:0] mul_tag_selected;
+    logic mul_result_valid;
+    
     always @(*) begin
-        cdb_valid = 1'b0;
-        cdb_result = 0;
-        cdb_tag = 0;
+        mul_result_valid = 1'b0;
+        mul_result_selected = 0;
+        mul_tag_selected = 0;
+        for (int j = 0; j < NUM_MUL_FUS; j = j + 1) begin
+            if (mul_valids[j]) begin
+                mul_result_valid = 1'b1;
+                mul_result_selected = mul_results[j];
+                mul_tag_selected = mul_tags[j];
+                break;
+            end
+        end
+    end
+
+    logic [XLEN-1:0] div_result_selected;
+    logic [5:0] div_tag_selected;
+    logic div_result_valid;
+    
+    always @(*) begin
+        div_result_valid = 1'b0;
+        div_result_selected = 0;
+        div_tag_selected = 0;
+        for (int j = 0; j < NUM_DIV_FUS; j = j + 1) begin
+            if (div_valids[j]) begin
+                div_result_valid = 1'b1;
+                div_result_selected = div_results[j];
+                div_tag_selected = div_tags[j];
+                break;
+            end
+        end
+    end
+
+    // ========================================================================
+    // CDB 0: Scheduled Bus (ALU, MUL, VEU)
+    // The issue_scheduler guarantees these will NEVER collide!
+    // ========================================================================
+    always @(*) begin
+        cdb0_valid = 1'b0;
+        cdb0_result = 0;
+        cdb0_tag = 0;
         
-        // Priority 1: ALU
         if (alu_result_valid) begin
-            cdb_valid = 1'b1;
-            cdb_result = alu_result_selected;
-            cdb_tag = {4'b0, alu_tag_selected};
+            cdb0_valid = 1'b1;
+            cdb0_result = alu_result_selected;
+            cdb0_tag = alu_tag_selected;
+        end else if (mul_result_valid) begin
+            cdb0_valid = 1'b1;
+            cdb0_result = mul_result_selected;
+            cdb0_tag = mul_tag_selected;
+        end else if (vec_result_valid) begin
+            cdb0_valid = 1'b1;
+            cdb0_result = vec_result[XLEN-1:0];
+            cdb0_tag = vec_result_tag;
         end
-        // Priority 2: LSU
-        else if (lsu_valid) begin
-            cdb_valid = 1'b1;
-            cdb_result = lsu_result;
-            cdb_tag = {2'b00, lsu_tag_extended}; // Use full 6-bit tag from LSQ
-        end
-        // Priority 3: MUL
-        else begin
-            for (int j = 0; j < NUM_MUL_FUS; j = j + 1) begin
-                if (mul_valids[j]) begin
-                    cdb_valid = 1'b1;
-                    cdb_result = mul_results[j];
-                    cdb_tag = {4'b0, mul_tags[j]};
-                    break;
-                end
-            end
-        end
+    end
+
+    // ========================================================================
+    // CDB 1: Unscheduled Bus (LSQ, DIV)
+    // These operate outside the scheduler. LSQ gets priority.
+    // (Known edge case: DIV drops data if LSQ hits on the same exact cycle).
+    // ========================================================================
+    always @(*) begin
+        cdb1_valid = 1'b0;
+        cdb1_result = 0;
+        cdb1_tag = 0;
         
-        // Priority 4: DIV
-        if (!cdb_valid) begin
-            for (int j = 0; j < NUM_DIV_FUS; j = j + 1) begin
-                if (div_valids[j]) begin
-                    cdb_valid = 1'b1;
-                    cdb_result = div_results[j];
-                    cdb_tag = {4'b0, div_tags[j]};
-                    break;
-                end
-            end
-        end
-        
-        // Priority 5: VEU
-        if (!cdb_valid && vec_result_valid) begin
-            cdb_valid = 1'b1;
-            cdb_result = vec_result[XLEN-1:0];
-            cdb_tag = {4'b0, vec_result_tag};
+        if (lsu_valid) begin
+            cdb1_valid = 1'b1;
+            cdb1_result = lsu_result;
+            cdb1_tag = lsu_tag_extended; 
+        end else if (div_result_valid) begin
+            cdb1_valid = 1'b1;
+            cdb1_result = div_result_selected;
+            cdb1_tag = div_tag_selected;
         end
     end
 

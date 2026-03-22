@@ -14,59 +14,34 @@ module commit_stage #(
     input rst_n,
     
     // From ROB
-    input [XLEN-1:0] rob_result,
     input [4:0] rob_dest_reg,
+    input [5:0] rob_dest_phys,
     input rob_valid,
     input [3:0] rob_instr_type,
     
-    // Write to architectural register file
-    output reg [4:0] reg_write_addr,
-    output reg [XLEN-1:0] reg_write_data,
-    output reg reg_write_en,
+    // To/From Physical Register File (Reading speculative result)
+    output logic [5:0] commit_read_addr,
+    input [XLEN-1:0] commit_read_data,
     
-    // Debug: register file readout
-    output [NUM_INT_REGS-1:0][XLEN-1:0] debug_reg_file
+    // Write to architectural register file
+    output logic [4:0] reg_write_addr,
+    output logic [XLEN-1:0] reg_write_data,
+    output logic reg_write_en
 );
 
-    // Architectural register file
-    reg [XLEN-1:0] regs [NUM_INT_REGS-1:0];
-    
-    // Commit logic
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            for (int i = 0; i < NUM_INT_REGS; i++)
-                regs[i] <= 0;
-            reg_write_en <= 1'b0;
-        end else if (rob_valid) begin
-            // Only write back for arithmetic/load instructions (not branches/stores)
-            if (rob_instr_type == `ITYPE_ALU || 
-                rob_instr_type == `ITYPE_ALU_IMM ||
-                rob_instr_type == `ITYPE_LOAD ||
-                rob_instr_type == `ITYPE_JAL ||
-                rob_instr_type == `ITYPE_JALR) begin
-                
-                reg_write_en <= 1'b1;
-                reg_write_addr <= rob_dest_reg;
-                reg_write_data <= rob_result;
-                
-                // Update local register file
-                if (rob_dest_reg != 5'b0) begin  // x0 is hardwired to 0
-                    regs[rob_dest_reg] <= rob_result;
-                end
-            end else begin
-                reg_write_en <= 1'b0;
-            end
-        end else begin
-            reg_write_en <= 1'b0;
+    // Commit is purely combinational routing to the architectural register file
+    always @(*) begin
+        reg_write_en = 1'b0;
+        reg_write_addr = 5'b0;
+        reg_write_data = commit_read_data; // Data fetched from PRF
+        commit_read_addr = rob_dest_phys;  // Tell PRF which register to read
+        
+        // Only write if there is a valid commit, the destination is not x0,
+        // and it is a scalar integer instruction.
+        if (rob_valid && rob_dest_reg != 5'b0 && rob_instr_type != `V_EXT_VEC && rob_instr_type != `V_EXT_LOAD) begin
+            reg_write_en = 1'b1;
+            reg_write_addr = rob_dest_reg;
         end
     end
-    
-    // Debug register file readout (asynchronous)
-    generate
-        genvar i;
-        for (i = 0; i < NUM_INT_REGS; i++) begin
-            assign debug_reg_file[i] = regs[i];
-        end
-    endgenerate
 
 endmodule

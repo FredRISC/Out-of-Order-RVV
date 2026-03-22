@@ -27,6 +27,7 @@ module riscv_core_top (
     output [XLEN-1:0] dmem_write_addr,
     output [XLEN-1:0] dmem_write_data,
     output dmem_write_en,
+    input dmem_write_ready, // Add to top level interface
     output [3:0] dmem_be,
     
     input ext_irq,
@@ -49,6 +50,7 @@ module riscv_core_top (
     logic dispatch_src1_valid, dispatch_src2_valid;
     logic dispatch_lsq_is_store;
     logic [LSQ_TAG_WIDTH-1:0] dispatch_lsq_tag, lsq_alloc_tag_from_exec;
+    logic [2:0] dispatch_lsq_size;
     
     // Dispatch outputs
     logic [XLEN-1:0] dispatch_src1, dispatch_src2;
@@ -60,7 +62,9 @@ module riscv_core_top (
     
     // Physical register file signals
     logic [XLEN-1:0] phys_reg_data1, phys_reg_data2;
+    logic [XLEN-1:0] phys_reg_data_commit;
     logic [NUM_PHYS_REGS-1:0] phys_reg_status;
+    logic [5:0] commit_read_addr_wire;
     
     // RS signals (5 types)
     logic alu_rs_full, mem_rs_full, mul_rs_full, div_rs_full, vec_rs_full;
@@ -71,14 +75,21 @@ module riscv_core_top (
     logic [5:0] alu_tag, mem_tag, mul_tag, div_tag, vec_tag;  // Physical reg tags!
     logic [LSQ_TAG_WIDTH-1:0] mem_lsq_tag; // To Execute
     
-    // CDB (Common Data Bus)
-    logic [XLEN-1:0] cdb_result;
-    logic [5:0] cdb_tag;  // Physical register tag
-    logic cdb_valid;
+    // Dual CDBs
+    logic [XLEN-1:0] cdb0_result;
+    logic [5:0] cdb0_tag;
+    logic cdb0_valid;
+    logic [XLEN-1:0] cdb1_result;
+    logic [5:0] cdb1_tag;
+    logic cdb1_valid;
     
     // Free list signals
     logic [5:0] free_phys_reg;
     logic free_list_valid;
+    
+    // Predictive Issue Scheduler signals
+    logic rs_req_alu, rs_req_mul, rs_req_vec;
+    logic rs_grant_alu, rs_grant_mul, rs_grant_vec;
     
     // ROB signals (TRACKING ONLY, not data)
     logic rob_full, rob_commit_valid;
@@ -86,7 +97,8 @@ module riscv_core_top (
     logic [5:0] rob_commit_dest_phys_reg;  // Physical reg holding the result
     logic [5:0] rob_commit_old_phys_reg;   // Old physical reg to free
     logic [3:0] rob_commit_instr_type;
-    logic rob_commit_is_mem;
+    logic rob_flush_req;
+    logic [XLEN-1:0] rob_flush_pc;
     
     // Commit signals
     logic [4:0] reg_write_addr;
@@ -97,7 +109,10 @@ module riscv_core_top (
     logic flush_pipeline, branch_mispredict;
     logic stall_fetch, stall_decode, stall_dispatch;
     logic [XLEN-1:0] branch_target;
+    logic [XLEN-1:0] flush_target_pc_wire;
     logic lsq_full;
+    logic lsq_flush_req;
+    logic [5:0] lsq_violation_tag;
 
     // ========================================================================
     // STAGE 1: FETCH
@@ -105,7 +120,7 @@ module riscv_core_top (
     
     fetch_stage #(.XLEN(XLEN), .INST_WIDTH(INST_WIDTH))
     fetch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_fetch), .flush(flush_pipeline),
-        .branch_target(branch_target), .pc_out(fetch_pc), .instr_out(fetch_instr),
+        .flush_pc(flush_target_pc_wire), .pc_out(fetch_pc), .instr_out(fetch_instr),
         .valid_out(fetch_valid), .imem_addr(imem_addr), .imem_data(imem_data), .imem_valid(imem_valid));
 
     // ========================================================================
@@ -141,12 +156,15 @@ module riscv_core_top (
     
     physical_register_file #(.NUM_PHYS_REGS(NUM_PHYS_REGS), .XLEN(XLEN))
     phys_regfile_inst (.clk(clk), .rst_n(rst_n),
-        .write_addr(cdb_tag), .write_data(cdb_result), .write_en(cdb_valid),
+        .write_addr0(cdb0_tag), .write_data0(cdb0_result), .write_en0(cdb0_valid),
+        .write_addr1(cdb1_tag), .write_data1(cdb1_result), .write_en1(cdb1_valid),
         .read_addr1(rat_src1_phys), .read_addr2(rat_src2_phys),
         .read_data1(phys_reg_data1), .read_data2(phys_reg_data2),
+        .commit_read_addr(commit_read_addr_wire),
+        .commit_read_data(phys_reg_data_commit),
         .status_valid(phys_reg_status),
         .alloc_addr(rat_dst_phys), 
-        .alloc_en(dispatch_valid && (dispatch_dest_reg != 5'b0)));
+        .alloc_en(dispatch_rob_alloc)); // Every dispatched instr gets a PReg!
 
     // ========================================================================
     // FREE LIST (Returns freed physical registers)
@@ -154,9 +172,9 @@ module riscv_core_top (
     
     free_list #(.NUM_PHYS_REGS(NUM_PHYS_REGS), .TAG_WIDTH(6))
     free_list_inst (.clk(clk), .rst_n(rst_n),
-        .alloc_req(dispatch_valid && (dispatch_dest_reg != 5'b0)), .alloc_phys(free_phys_reg),
+        .alloc_req(dispatch_valid), .alloc_phys(free_phys_reg),
         .alloc_valid(free_list_valid),
-        .free_phys(rob_commit_old_phys_reg), .free_en(rob_commit_valid && (rob_commit_dest_arch_reg != 5'b0)));
+        .free_phys(rob_commit_old_phys_reg), .free_en(rob_commit_valid));
 
     // ========================================================================
     // STAGE 3: DISPATCH
@@ -175,9 +193,10 @@ module riscv_core_top (
         .alu_op(dispatch_alu_op), .valid_out(dispatch_valid),
         .src1_valid(dispatch_src1_valid), .src2_valid(dispatch_src2_valid),
         .rs_type(dispatch_rs_type), .rs_alloc_valid(dispatch_rs_alloc),
-        .rob_alloc_valid(dispatch_rob_alloc), .lsq_alloc_valid(dispatch_lsq_alloc),
+        .rob_alloc_valid(dispatch_rob_alloc),
         .lsq_alloc_tag_in(lsq_alloc_tag_from_exec), .dispatch_lsq_tag(dispatch_lsq_tag), 
-        .lsq_alloc_req(), .lsq_alloc_is_store(dispatch_lsq_is_store) // Re-routed via dispatch_lsq_alloc below
+        .lsq_alloc_req(dispatch_lsq_alloc), .lsq_alloc_is_store(dispatch_lsq_is_store),
+        .lsq_alloc_size(dispatch_lsq_size)
     );
 
     // ========================================================================
@@ -191,10 +210,13 @@ module riscv_core_top (
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(dispatch_src2_valid),
         .alu_op(dispatch_alu_op),
         .dest_tag_in(rat_dst_phys),
+        .lsq_tag_in({LSQ_TAG_WIDTH{1'b0}}), // Dummy connection for ALU
         .dispatch_valid(dispatch_rs_alloc && (dispatch_rs_type == `RS_TYPE_ALU)),
-        .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
+        .issue_req(rs_req_alu), .issue_grant(rs_grant_alu), // Scheduled
+        .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
+        .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
         .operand1(alu_op1), .operand2(alu_op2), .execute_op(alu_operation),
-        .execute_valid(alu_valid), .rs_full(alu_rs_full), .assigned_tag(alu_tag));
+        .execute_lsq_tag(), .execute_valid(alu_valid), .rs_full(alu_rs_full), .assigned_tag(alu_tag));
     
     // MEM RS
     reservation_station #(.RS_SIZE(MEM_RS_SIZE), .XLEN(XLEN), .RS_TAG_WIDTH(6), .LSQ_TAG_WIDTH(LSQ_TAG_WIDTH))
@@ -204,8 +226,10 @@ module riscv_core_top (
         .alu_op(dispatch_alu_op),
         .dest_tag_in(rat_dst_phys),
         .lsq_tag_in(dispatch_lsq_tag), .execute_lsq_tag(mem_lsq_tag),
+        .issue_req(), .issue_grant(1'b1), // Unscheduled (Direct to CDB1)
         .dispatch_valid(dispatch_rs_alloc && (dispatch_rs_type == `RS_TYPE_MEM)),
-        .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
+        .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
+        .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
         .operand1(mem_op1), .operand2(mem_op2), .execute_op(mem_operation),
         .execute_valid(mem_valid), .rs_full(mem_rs_full), .assigned_tag(mem_tag));
     
@@ -216,10 +240,13 @@ module riscv_core_top (
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(dispatch_src2_valid),
         .alu_op(dispatch_alu_op),
         .dest_tag_in(rat_dst_phys),
+        .lsq_tag_in({LSQ_TAG_WIDTH{1'b0}}),
+        .issue_req(rs_req_mul), .issue_grant(rs_grant_mul), // Scheduled
         .dispatch_valid(dispatch_rs_alloc && (dispatch_rs_type == `RS_TYPE_MUL)),
-        .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
+        .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
+        .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
         .operand1(mul_op1), .operand2(mul_op2), .execute_op(),
-        .execute_valid(mul_valid), .rs_full(mul_rs_full), .assigned_tag(mul_tag));
+        .execute_lsq_tag(), .execute_valid(mul_valid), .rs_full(mul_rs_full), .assigned_tag(mul_tag));
     
     // DIV RS
     reservation_station #(.RS_SIZE(DIV_RS_SIZE), .XLEN(XLEN), .RS_TAG_WIDTH(6))
@@ -228,10 +255,13 @@ module riscv_core_top (
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(dispatch_src2_valid),
         .alu_op(dispatch_alu_op),
         .dest_tag_in(rat_dst_phys),
+        .lsq_tag_in({LSQ_TAG_WIDTH{1'b0}}),
+        .issue_req(), .issue_grant(1'b1), // Unscheduled (Direct to CDB1)
         .dispatch_valid(dispatch_rs_alloc && (dispatch_rs_type == `RS_TYPE_DIV)),
-        .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
+        .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
+        .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
         .operand1(div_op1), .operand2(div_op2), .execute_op(),
-        .execute_valid(div_valid), .rs_full(div_rs_full), .assigned_tag(div_tag));
+        .execute_lsq_tag(), .execute_valid(div_valid), .rs_full(div_rs_full), .assigned_tag(div_tag));
     
     // VEC RS
     reservation_station #(.RS_SIZE(VEC_RS_SIZE), .XLEN(XLEN), .RS_TAG_WIDTH(6))
@@ -240,10 +270,13 @@ module riscv_core_top (
         .src2_value(dispatch_src2), .src2_tag(rat_src2_phys), .src2_valid(dispatch_src2_valid),
         .alu_op(dispatch_alu_op),
         .dest_tag_in(rat_dst_phys),
+        .lsq_tag_in({LSQ_TAG_WIDTH{1'b0}}),
+        .issue_req(rs_req_vec), .issue_grant(rs_grant_vec), // Scheduled
         .dispatch_valid(dispatch_rs_alloc && (dispatch_rs_type == `RS_TYPE_VEC)),
-        .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid),
+        .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
+        .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
         .operand1(vec_op1[XLEN-1:0]), .operand2(vec_op2[XLEN-1:0]), .execute_op(vec_operation),
-        .execute_valid(vec_valid), .rs_full(vec_rs_full), .assigned_tag(vec_tag));
+        .execute_lsq_tag(), .execute_valid(vec_valid), .rs_full(vec_rs_full), .assigned_tag(vec_tag));
 
     // ========================================================================
     // REORDER BUFFER (Tracking only, NOT data storage!)
@@ -251,16 +284,19 @@ module riscv_core_top (
     
     reorder_buffer #(.ROB_SIZE(ROB_SIZE), .XLEN(XLEN))
     rob_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
+        .alloc_pc(decode_pc), // Pass PC directly from Decode for tracking
         .alloc_instr_type(decode_instr_type), .alloc_dest_reg(dispatch_dest_reg),
         .alloc_phys_reg(rat_dst_phys),
         .alloc_old_phys_reg(rat_dst_old_phys),
-        .alloc_valid(dispatch_rob_alloc), .alloc_tag(), .rob_full(rob_full),
-        .result_data(cdb_result), .result_tag(cdb_tag), .result_valid(cdb_valid),
+        .alloc_valid(dispatch_rob_alloc), .rob_full(rob_full),
+        .result0_tag(cdb0_tag), .result0_valid(cdb0_valid),
+        .result1_tag(cdb1_tag), .result1_valid(cdb1_valid),
+        .lsq_violation_req(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
         .commit_valid(rob_commit_valid), .commit_instr_type(rob_commit_instr_type),
         .commit_dest_arch(rob_commit_dest_arch_reg),
         .commit_dest_phys(rob_commit_dest_phys_reg),
         .commit_old_phys(rob_commit_old_phys_reg),
-        .reg_write_en());
+        .rob_flush_req(rob_flush_req), .rob_flush_pc(rob_flush_pc));
 
     // ========================================================================
     // STAGE 4: EXECUTE (Encapsulated FUs)
@@ -272,6 +308,7 @@ module riscv_core_top (
         .flush(flush_pipeline),
         // LSQ Allocation Tunneling
         .lsq_alloc_req(dispatch_lsq_alloc), .lsq_alloc_is_store(dispatch_lsq_is_store),
+        .lsq_alloc_size(dispatch_lsq_size),
         .alloc_phys_tag(rat_dst_phys), .alloc_tag(lsq_alloc_tag_from_exec),
         .lsq_full(lsq_full),
         .alu_op1(alu_op1), .alu_op2(alu_op2), .alu_operation(alu_operation),
@@ -286,8 +323,11 @@ module riscv_core_top (
         .dmem_read_data(dmem_read_data), .dmem_read_valid(dmem_read_valid),
         .dmem_write_addr(dmem_write_addr), .dmem_write_data(dmem_write_data), 
         .dmem_write_en(dmem_write_en), .dmem_be(dmem_be),
+        .dmem_write_ready(dmem_write_ready), // Default to 1'b1 in testbench if no complex memory
         .commit_lsq(rob_commit_valid && (rob_commit_instr_type == `IBASE_STORE || rob_commit_instr_type == `IBASE_LOAD)),
-        .cdb_result(cdb_result), .cdb_tag(cdb_tag), .cdb_valid(cdb_valid));
+        .lsq_flush(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
+        .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
+        .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid));
 
     // ========================================================================
     // STAGE 5: WRITEBACK (Inside execute_stage)
@@ -300,11 +340,12 @@ module riscv_core_top (
     
     commit_stage #(.XLEN(XLEN), .NUM_INT_REGS(NUM_INT_REGS))
     commit_inst (.clk(clk), .rst_n(rst_n),
-        .rob_result({{(XLEN){1'b0}}}),  // Result comes from physical_regfile, not ROB!
         .rob_dest_reg(rob_commit_dest_arch_reg),
+        .rob_dest_phys(rob_commit_dest_phys_reg),
         .rob_valid(rob_commit_valid), .rob_instr_type(rob_commit_instr_type),
-        .reg_write_addr(reg_write_addr), .reg_write_data(reg_write_data),
-        .reg_write_en(reg_write_en), .debug_reg_file());
+        .commit_read_addr(commit_read_addr_wire), .commit_read_data(phys_reg_data_commit),
+        .reg_write_addr(reg_write_addr), .reg_write_data(reg_write_data), 
+        .reg_write_en(reg_write_en));
 
     // ========================================================================
     // SUPPORT MODULES
@@ -313,15 +354,24 @@ module riscv_core_top (
     hazard_detection hazard_inst (.clk(clk), .rst_n(rst_n),
         .rs_full(alu_rs_full || mem_rs_full || mul_rs_full || div_rs_full || vec_rs_full),
         .rob_full(rob_full), .lsq_full(lsq_full),
-        .load_blocked(1'b0), .store_blocked(1'b0),
+        .free_list_empty(!free_list_valid),
         .stall_fetch(stall_fetch), .stall_decode(stall_decode), .stall_dispatch(stall_dispatch));
     
     main_controller controller_inst (.clk(clk), .rst_n(rst_n),
         .rs_full(alu_rs_full || mem_rs_full || mul_rs_full || div_rs_full || vec_rs_full),
         .rob_full(rob_full), .lsq_full(lsq_full),
-        .branch_mispredict(branch_mispredict),
+        .branch_mispredict(branch_mispredict), .branch_target_pc(branch_target),
+        .rob_flush_req(rob_flush_req), .rob_flush_pc(rob_flush_pc),
         .stall_fetch(stall_fetch), .stall_decode(stall_decode), .stall_dispatch(stall_dispatch),
-        .flush_pipeline(flush_pipeline), .pipeline_mode());
+        .flush_pipeline(flush_pipeline), .flush_target_pc(flush_target_pc_wire), .pipeline_mode());
+    
+    issue_scheduler #(
+        .MAX_LATENCY(8), .ALU_LATENCY(1), .MUL_LATENCY(MUL_LATENCY), .VEC_LATENCY(1)
+    ) issue_scheduler_inst (
+        .clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
+        .req_alu(rs_req_alu), .req_mul(rs_req_mul), .req_vec(rs_req_vec),
+        .grant_alu(rs_grant_alu), .grant_mul(rs_grant_mul), .grant_vec(rs_grant_vec)
+    );
     
     branch_predictor branch_pred_inst (.clk(clk), .rst_n(rst_n), .pc(fetch_pc),
         .predicted_target(branch_target), .actual_target(32'h0),

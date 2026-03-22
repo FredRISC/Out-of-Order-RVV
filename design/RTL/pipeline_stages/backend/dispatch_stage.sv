@@ -3,7 +3,7 @@
 // ============================================================================
 // Routes instructions to appropriate reservation stations based on decoded instruction type, and
 // prepare alu_op and immediate values for execution. Also generates control signals for RS, ROB, and LSQ allocation.
-// long critical path (Decode -> RAT -> PRF -> Dispatch -> RS)
+// Datapath (Decode -> Dispatch (RAT) -> PRF -> Dispatch (Encapsulation) -> RS)
 
 `include "../riscv_header.sv"
 
@@ -30,41 +30,48 @@ module dispatch_stage #(
     input [XLEN-1:0] pc_in,
     input valid_in,
 
-    // RAT Interface (Encapsulated)
-    input [5:0] free_phys_reg,       // From Free List
-    input [4:0] commit_arch_reg,     // From Commit/ROB
-    input [5:0] commit_phys_reg,     // From Commit/ROB
-    input commit_en,                 // From Commit/ROB
-    
-    output [5:0] phys_rs1, phys_rs2, // To PRF and RS
-    output [5:0] phys_rd, phys_rd_old, // To RS/ROB and ROB/FreeList
+    // Essentially the dispatch_stage initialization signal
+    output valid_out, // Sent to enable free_list & PRF; asserted when decode_stage output is valid
+    output [4:0] dest_reg, // MUXed Architectural destination register sent to ROB for bookkeeping
+    // Free List Interface
+    input [5:0] free_phys_reg, // From free_list to RAT for registering new mapping
 
-    // Signals from physical register file
+    // RAT -> PRF & RS Interface (dispatch)
+    output [5:0] phys_rs1, phys_rs2, // Look up mapping by RAT (= spec_rat[src1_arch]); to PRF for operand value and valid bit and to RS for tagging
+    // RAT -> RS & ROB Interface (dispatch)
+    output [5:0] phys_rd, // To RS/ROB for tagging (phys_rd = free_phys_reg)
+    output phys_rd_old, // Old mapping of the rd register to be freed; sent to ROB on allocation
+
+    // Physical Register File Interface (for operand values and valid bits)
     input [XLEN-1:0] PReg_src1_value, PReg_src2_value, // Physical register values 
     input PReg_src1_valid_in, PReg_src2_valid_in,      // Physical register valid bits
     
-    // Output instruction fields
+    // MUXed source operand values to reservation station
     output [XLEN-1:0] src1_value, // operand 1 value (register)
     output [XLEN-1:0] src2_value, // operand 2 value (register or immediate)
-    output [3:0] alu_op,
     output src1_valid, // Operand 1 is ready (immediate/PC or valid reg)
     output src2_valid, // Operand 2 is ready (immediate or valid reg)
-    
+
+    // Control signals for execution
+    output [3:0] alu_op,
+
     // RS allocation
     output [3:0] rs_type,  // Which RS to use
     output rs_alloc_valid, // Valid signal for RS allocation   
     // ROB allocation
     output rob_alloc_valid, // Valid signal for ROB allocation
-    // LSQ allocation (for loads/stores)
-    output lsq_alloc_valid, // Valid signal for LSQ allocation
 
     // LSQ Alloc Interface (New)
     input [LSQ_TAG_WIDTH-1:0] lsq_alloc_tag_in, // Tag from LSQ
     output [LSQ_TAG_WIDTH-1:0] dispatch_lsq_tag, // Tag to RS
     output lsq_alloc_req,
     output lsq_alloc_is_store,
+    output [2:0] lsq_alloc_size, // funct3 to define byte/half/word
 
-    output valid_out
+    // RPB -> RAT Interface (commit)
+    input [4:0] commit_arch_reg,     // To update architectural RAT
+    input [5:0] commit_phys_reg,     // To update architectural RAT
+    input commit_en                 // To update architectural RAT
 );
 
     // Extract fields from instruction
@@ -114,8 +121,8 @@ module dispatch_stage #(
     
     // Preparing destination register for RAT renaming
     // Avoid unecessary register renaming; stores (S-type) and Branches (B-type) do not write to rd
-    logic use_rd = (instr_type == `IBASE_STORE || instr_type == `IBASE_BRANCH || instr_type == `V_EXT_STORE || instr_type == `V_EXT_VEC || instr_type == `V_EXT_LOAD || instr_type == `IBASE_UNKNOWN);
-    assign dst_arch_internal =  use_rd ? 5'b0 : rd;
+    logic has_no_scalar_rd = (instr_type == `IBASE_STORE || instr_type == `IBASE_BRANCH || instr_type == `V_EXT_STORE || instr_type == `V_EXT_VEC || instr_type == `V_EXT_LOAD || instr_type == `IBASE_UNKNOWN);
+    assign dst_arch_internal =  has_no_scalar_rd ? 5'b0 : rd;
 
     // Internal RAT Instantiation
     rat #(.NUM_INT_REGS(NUM_INT_REGS), .NUM_PHYS_REGS(NUM_PHYS_REGS))
@@ -128,9 +135,14 @@ module dispatch_stage #(
         .rename_en(valid_in && !stall && !flush && (dst_arch_internal != 5'b0)),
         .commit_arch(commit_arch_reg), .commit_phys(commit_phys_reg), .commit_en(commit_en)
     );
-    assign phys_rd = free_phys_reg; // Pass through allocated tag
 
-    // Preparing inputs for reservation station
+    // Assigning physical destination register for RS/ROB tagging
+    assign phys_rd = free_phys_reg;
+    
+    // Output architectural destination register to ROB
+    assign dest_reg = dst_arch_internal;
+
+    // MUXed source operands and ready signals to reservation station
     // Mux for src1: LUI uses 0, AUIPC uses PC, others use PReg value
     assign src1_value = (instr_type == `IBASE_LUI)   ? {XLEN{1'b0}} :
                         (instr_type == `IBASE_AUIPC || instr_type == `IBASE_JAL) ? pc_in :
@@ -237,16 +249,16 @@ module dispatch_stage #(
         endcase
     end
     
-    // Control signals
+    // Control signals for RS, ROB, and LSQ allocation
     assign rs_alloc_valid = valid_in && !stall && !flush;
     assign rob_alloc_valid = valid_in && !stall && !flush;
     
     logic is_load = (instr_type == `IBASE_LOAD);
     logic is_store = (instr_type == `IBASE_STORE);
     
-    assign lsq_alloc_valid = (is_load || is_store) && valid_in && !stall && !flush;
-    assign lsq_alloc_req = lsq_alloc_valid;
+    assign lsq_alloc_req = (is_load || is_store) && valid_in && !stall && !flush;
     assign lsq_alloc_is_store = is_store;
+    assign lsq_alloc_size = funct3; // Record size at allocation!
     assign dispatch_lsq_tag = lsq_alloc_tag_in;
     
     assign valid_out = valid_in && !stall && !flush;

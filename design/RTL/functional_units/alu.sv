@@ -33,7 +33,7 @@ module alu #(
                 `ALU_XOR:  result <= operand1 ^ operand2;
                 `ALU_SLL:  result <= operand1 << operand2[4:0];
                 `ALU_SRL:  result <= operand1 >> operand2[4:0];
-                `ALU_SRA:  result <= operand1 >>> operand2[4:0];
+                `ALU_SRA:  result <= $signed(operand1) >>> operand2[4:0];
                 `ALU_SLT:  result <= ($signed(operand1) < $signed(operand2)) ? 32'h1 : 32'h0;
                 `ALU_SLTU: result <= (operand1 < operand2) ? 32'h1 : 32'h0;
                 default:   result <= 32'h0;

@@ -142,6 +142,7 @@ parameter NUM_VEC_LANES = 4;           // Number of parallel lanes
 // ============================================================================
 
 parameter CDB_TAG_WIDTH = 6;           // Matches PHYS_REG_TAG_WIDTH in RAT+PHYSICAL
+parameter NUM_CDBS = 2;                // Dual CDB Architecture (Scheduled + Unscheduled)
                                         // CDB broadcasts PHYSICAL register tags
 
 // ============================================================================

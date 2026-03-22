@@ -13,13 +13,19 @@ module main_controller (
     input rs_full,
     input rob_full,
     input lsq_full,
+    
+    // Flush interfaces
     input branch_mispredict,
+    input [XLEN-1:0] branch_target_pc,
+    input rob_flush_req,
+    input [XLEN-1:0] rob_flush_pc,
     
     // Control outputs
     output reg stall_fetch,
     output reg stall_decode,
     output reg stall_dispatch,
     output reg flush_pipeline,
+    output reg [XLEN-1:0] flush_target_pc,
     
     // Pipeline mode
     output reg [1:0] pipeline_mode  // 00=reset, 01=normal, 10=stall, 11=flush
@@ -32,6 +38,7 @@ module main_controller (
             stall_decode <= 1'b0;
             stall_dispatch <= 1'b0;
             flush_pipeline <= 1'b0;
+            flush_target_pc <= {XLEN{1'b0}};
         end else begin
             // Generate stalls based on resource availability
             if (rs_full || rob_full || lsq_full) begin
@@ -46,10 +53,16 @@ module main_controller (
                 stall_fetch <= 1'b0;
             end
             
-            // Flush on branch mispredict
-            if (branch_mispredict) begin
+            // Flush handling (Priority: ROB Flush > Branch Mispredict)
+            // ROB flush is architecturally older (at commit) than branch mispredict (at execute)
+            if (rob_flush_req) begin
                 pipeline_mode <= 2'b11;  // FLUSH mode
                 flush_pipeline <= 1'b1;
+                flush_target_pc <= rob_flush_pc;
+            end else if (branch_mispredict) begin
+                pipeline_mode <= 2'b11;  // FLUSH mode
+                flush_pipeline <= 1'b1;
+                flush_target_pc <= branch_target_pc;
             end else begin
                 flush_pipeline <= 1'b0;
             end

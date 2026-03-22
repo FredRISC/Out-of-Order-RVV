@@ -17,6 +17,7 @@ module hazard_detection #(
     input vec_rs_full,
     input rob_full,
     input lsq_full,
+    input free_list_empty,
     
     output reg stall_fetch,
     output reg stall_decode,
@@ -26,7 +27,7 @@ module hazard_detection #(
     always @(*) begin
         // Dispatch stalls if any RS is full
         stall_dispatch = alu_rs_full | mem_rs_full | mul_rs_full | 
-                        div_rs_full | vec_rs_full | rob_full | lsq_full;
+                        div_rs_full | vec_rs_full | rob_full | lsq_full | free_list_empty;
         
         // Back-propagate stalls
         stall_decode = stall_dispatch;
