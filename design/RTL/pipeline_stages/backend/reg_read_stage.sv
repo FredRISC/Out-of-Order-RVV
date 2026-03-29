@@ -157,9 +157,7 @@ module reg_read_stage #(
         //Vector Store Data and VL Bypass (Only for Vector Stores)
         if (mem_use_vl) begin  
             // VL Bypass
-            if (cdb0_valid && cdb0_tag == mem_issue_vl_tag) mem_vl_bypassed = cdb0_result;
-            else if (cdb1_valid && cdb1_tag == mem_issue_vl_tag) mem_vl_bypassed = cdb1_result;
-            else mem_vl_bypassed = prf_read_datas[8];
+            mem_vl_bypassed = prf_read_datas[8]; // VL already ready from RS
             // Vector Store Data Bypass (from vec_cdb or vector PRF)
             if (vec_cdb_valid && vec_cdb_tag == mem_issue_src2_tag) mem_vec_src2_bypassed = vec_cdb_result;
             else mem_vec_src2_bypassed = vprf_read_data3;
@@ -200,9 +198,7 @@ module reg_read_stage #(
         else vec_src2_bypassed = vprf_read_data2;
         
         if (!vec_use_vl) vec_vl_bypassed = 32'b0;
-        else if (cdb0_valid && cdb0_tag == vec_issue_vl_tag) vec_vl_bypassed = cdb0_result;
-        //else if (cdb1_valid && cdb1_tag == vec_issue_vl_tag) vec_vl_bypassed = cdb1_result;
-        else vec_vl_bypassed = prf_read_datas[9];
+        else vec_vl_bypassed = prf_read_datas[9]; // VL already ready from RS
     end
 
     // ========================================================================

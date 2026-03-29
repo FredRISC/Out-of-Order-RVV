@@ -238,8 +238,10 @@ module dispatch_stage #(
         case (instr_type)
             `IBASE_ALU_IMM:
                 imm_extended = {{20{instr_in[31]}}, instr_in[31:20]}; // Sign-extend for regular immediates
-            `V_EXT_LOAD, `V_EXT_STORE, `V_EXT_CONFIG:
-                imm_extended = 32'b0; // RVV memory ops and vsetvli don't use immediate offsets
+            `V_EXT_LOAD, `V_EXT_STORE:
+                imm_extended = 32'b0; // RVV memory ops don't use immediate offsets
+            `V_EXT_CONFIG:
+                imm_extended = {21'b0, zimm}; // Pass vtypei (zimm) to ALU on op2 for VLMAX calculation
             `V_EXT_VEC: begin
                 if (is_OPIVI) 
                     imm_extended = {{27{instr_in[19]}}, instr_in[19:15]}; // Sign-extend 5-bit rs1 field for OPIVI

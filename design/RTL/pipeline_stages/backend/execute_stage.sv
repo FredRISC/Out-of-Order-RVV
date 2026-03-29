@@ -135,7 +135,7 @@ module execute_stage #(
     genvar i;
     generate
         for (i = 0; i < NUM_ALU_FUS; i = i + 1) begin : gen_alus
-            alu #(.XLEN(XLEN)) alu_inst (
+            alu #(.XLEN(XLEN), .VLEN(VLEN)) alu_inst (
                 .clk(clk),
                 .rst_n(rst_n),
                 .operand1(alu_op1),
@@ -306,15 +306,14 @@ module execute_stage #(
     end
 
     // ========================================================================
-    // CDB ARBITRATION (Priority Encoder Inside Execute Stage)
+    // Result Selection From Each FU Type (Priority Encoding)
     // ========================================================================
-    // Priority: ALU > LSU > MUL > DIV > VEU
-    
+   
     logic [XLEN-1:0] alu_result_selected;
     logic [5:0] alu_tag_selected;
     logic alu_result_valid;
     
-    // Select from any ALU that has valid result
+    // ALU result selection
     always @(*) begin
         alu_result_valid = 1'b0;
         alu_result_selected = 0;
@@ -330,6 +329,7 @@ module execute_stage #(
         end
     end
     
+    // MUL result selection
     logic [XLEN-1:0] mul_result_selected;
     logic [5:0] mul_tag_selected;
     logic mul_result_valid;
@@ -348,6 +348,7 @@ module execute_stage #(
         end
     end
 
+    // DIV result selection
     logic [XLEN-1:0] div_result_selected;
     logic [5:0] div_tag_selected;
     logic div_result_valid;
