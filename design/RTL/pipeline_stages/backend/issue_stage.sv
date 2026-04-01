@@ -226,7 +226,7 @@ module issue_stage #(
     );
 
     // ========================================================================
-    // Predictive Issue Scheduler (For Scheduled CDB FUs)
+    // Issue Scheduler (For Scheduled CDB FUs)
     // ========================================================================
     issue_scheduler #(
         .MAX_LATENCY(8), .ALU_LATENCY(1), .MUL_LATENCY(MUL_LATENCY), .DIV_LATENCY(DIV_LATENCY)

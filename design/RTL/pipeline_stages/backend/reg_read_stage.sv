@@ -231,8 +231,10 @@ module reg_read_stage #(
             // MEM Flop
             mem_valid_exec <= mem_issue_valid;
             if (mem_issue_valid) begin
+                // mem_issue_op: 0001 = Store. If it's a Vector Store, pass the 128-bit VPRF data.
+                // If it's a Vector Load, pass the scalar rs2 (the stride value) instead!
                 mem_op1_exec <= mem_src1_bypassed;
-                if (mem_use_vl) mem_op2_exec <= mem_vec_src2_bypassed; // 128-bit VPRF data
+                if (mem_use_vl && (mem_issue_op == 4'b0001)) mem_op2_exec <= mem_vec_src2_bypassed; 
                 else mem_op2_exec <= { {(DLEN-XLEN){1'b0}}, mem_src2_bypassed }; // 32-bit zero-extended data
                 mem_imm_exec <= mem_issue_imm;
                 mem_tag_exec <= mem_issue_dest_tag;

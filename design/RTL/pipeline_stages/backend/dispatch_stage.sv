@@ -48,7 +48,7 @@ module dispatch_stage #(
     output phys_rd_old, // Old RAT mapping of the rd register to be freed; sent to ROB on allocation
 
     // Physical Register File Interface (Operands Ready?)
-    input PReg_src1_valid_in, PReg_src2_valid_in,      // Physical register valid bits
+    // input PReg_src1_valid_in, PReg_src2_valid_in,      // Physical register valid bits
     
     // Reservation Station Interface
     output rs_alloc_valid, // Requst for RS allocation
@@ -156,6 +156,8 @@ module dispatch_stage #(
         case (instr_type)
             `IBASE_ALU, `IBASE_BRANCH, `IBASE_STORE, `M_EXT_MUL, `M_EXT_DIV, `V_EXT_VEC:
                 use_rs2 = 1'b1;
+            `V_EXT_LOAD:
+                use_rs2 = (instr_in[27:26] == 2'b10); // mop == 10 means strided load (needs rs2)
             default:
                 use_rs2 = 1'b0;
         endcase
@@ -330,8 +332,12 @@ module dispatch_stage #(
             // execute_stage expects 0001 for stores
             alu_op = 4'b0001;
         end else if (instr_type == `IBASE_LOAD || instr_type == `V_EXT_LOAD) begin
-            // execute_stage expects 0000 for loads
-            alu_op = 4'b0000;
+            // execute_stage expects 0000 for unit-stride loads, 0010 for strided loads
+            if (instr_type == `V_EXT_LOAD && instr_in[27:26] == 2'b10) begin
+                alu_op = 4'b0010;
+            end else begin
+                alu_op = 4'b0000;
+            end
         end else begin
             alu_op = `ALU_ADD;
         end

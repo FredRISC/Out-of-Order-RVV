@@ -147,11 +147,7 @@ module riscv_core_top (
     logic [XLEN-1:0] rob_flush_pc;
     logic [31:0] rob_commit_vtype;
     
-    // Commit signals
-    logic [4:0] reg_write_addr;
-    logic [XLEN-1:0] reg_write_data;
-    logic reg_write_en;
-    
+     
     // Control signals
     logic flush_pipeline, branch_mispredict;
     logic stall_fetch, stall_decode, stall_dispatch;
@@ -189,22 +185,6 @@ module riscv_core_top (
         .commit_req(rob_commit_valid && rob_commit_instr_type == `V_EXT_CONFIG),
         .commit_vtype(rob_commit_vtype), .commit_vl_tag(rob_commit_dest_phys_reg)); 
 
-    // ========================================================================
-    // REGISTER FILES (Arch Registers Only)
-    // ========================================================================
-    
-    // NOTE: Arch Register File is only written on commit. 
-    // Dispatch reads from Physical Register File via RAT mapping.
-    register_file #(.NUM_INT_REGS(NUM_INT_REGS), .XLEN(XLEN))
-    regfile_inst (.clk(clk), .rst_n(rst_n),
-        .write_addr(reg_write_addr), .write_data(reg_write_data),
-        .write_en(reg_write_en), .debug_reg_file(debug_reg_file));
-    
-    vector_register_file #(.NUM_VEC_REGS(NUM_VEC_REGS), .VLEN(VLEN))
-    vec_regfile_inst (.clk(clk), .rst_n(rst_n),
-        .read_addr1(5'b0), .read_addr2(5'b0),
-        .read_data1(), .read_data2(),
-        .write_addr(5'b0), .write_data(0), .write_en(1'b0));
 
     // ========================================================================
     // PHYSICAL REGISTER FILE (Speculative data storage)
@@ -263,12 +243,10 @@ module riscv_core_top (
     logic commit_rat = rob_commit_valid && !rob_commit_type_is_vec && (rob_commit_instr_type != `IBASE_STORE);
     logic commit_vrat = rob_commit_valid && (rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD);
 
-    logic dispatch_src1_valid_wire;
-    logic dispatch_src2_valid_wire;
+    logic dispatch_src1_valid_wire = (decode_instr_type == `V_EXT_VEC) ? vphys_reg_status[rat_src1_phys] : phys_reg_status[rat_src1_phys];
+    logic dispatch_src2_valid_wire = (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_STORE) ? vphys_reg_status[rat_src2_phys] : phys_reg_status[rat_src2_phys];
     logic dispatch_src1_is_vec;
     logic dispatch_src2_is_vec;
-    assign dispatch_src1_valid_wire = (decode_instr_type == `V_EXT_VEC) ? vphys_reg_status[rat_src1_phys] : phys_reg_status[rat_src1_phys];
-    assign dispatch_src2_valid_wire = (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_STORE) ? vphys_reg_status[rat_src2_phys] : phys_reg_status[rat_src2_phys];
 
     dispatch_stage #(.XLEN(XLEN), .INST_WIDTH(INST_WIDTH), .NUM_INT_REGS(NUM_INT_REGS), .NUM_PHYS_REGS(NUM_PHYS_REGS), .LSQ_TAG_WIDTH(LSQ_TAG_WIDTH))
     dispatch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_dispatch), .flush(flush_pipeline),
@@ -386,29 +364,6 @@ module riscv_core_top (
     );
 
     // ========================================================================
-    // REORDER BUFFER (Tracking only, NOT data storage!)
-    // ========================================================================
-    
-    reorder_buffer #(.ROB_SIZE(ROB_SIZE), .XLEN(XLEN))
-    rob_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
-        .alloc_pc(decode_pc), // Pass PC directly from Decode for tracking
-        .alloc_instr_type(decode_instr_type), .alloc_dest_reg(dispatch_dest_reg),
-        .alloc_phys_reg(rat_dst_phys),
-        .alloc_old_phys_reg(rat_dst_old_phys),
-        .alloc_valid(dispatch_rob_alloc), .alloc_vtype(new_vtype), .rob_full(rob_full),
-        .result0_tag(cdb0_tag), .result0_valid(cdb0_valid),
-        .result1_tag(cdb1_tag), .result1_valid(cdb1_valid),
-        .vec_result0_tag(vec_cdb0_tag), .vec_result0_valid(vec_cdb0_valid),
-        .vec_result1_tag(vec_cdb1_tag), .vec_result1_valid(vec_cdb1_valid),
-        .lsq_violation_req(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
-        .commit_valid(rob_commit_valid), .commit_instr_type(rob_commit_instr_type),
-        .commit_dest_arch(rob_commit_dest_arch_reg),
-        .commit_dest_phys(rob_commit_dest_phys_reg),
-        .commit_old_phys(rob_commit_old_phys_reg),
-        .commit_vtype(rob_commit_vtype),
-        .rob_flush_req(rob_flush_req), .rob_flush_pc(rob_flush_pc));
-
-    // ========================================================================
     // STAGE 4: EXECUTE (Encapsulated FUs)
     // ========================================================================
     
@@ -443,23 +398,48 @@ module riscv_core_top (
         .vec_cdb0_result(vec_cdb0_result), .vec_cdb0_tag(vec_cdb0_tag), .vec_cdb0_valid(vec_cdb0_valid),
         .vec_cdb1_result(vec_cdb1_result), .vec_cdb1_tag(vec_cdb1_tag), .vec_cdb1_valid(vec_cdb1_valid));
 
+ 
     // ========================================================================
-    // STAGE 5: WRITEBACK (Inside execute_stage)
+    // REORDER BUFFER (Essentially the Commit Stage)
     // ========================================================================
-    // Results broadcast on CDB with PHYSICAL register tags
-
-    // ========================================================================
-    // STAGE 6: COMMIT
-    // ========================================================================
+    // There is NO Architectural Register File. Architectural state is tracked through arch_RAT
+    // The ROB retiring the instruction and updating the RAT/Free List IS the commit.
     
-    commit_stage #(.XLEN(XLEN), .NUM_INT_REGS(NUM_INT_REGS))
-    commit_inst (.clk(clk), .rst_n(rst_n),
-        .rob_dest_reg(rob_commit_dest_arch_reg),
-        .rob_dest_phys(rob_commit_dest_phys_reg),
-        .rob_valid(rob_commit_valid), .rob_instr_type(rob_commit_instr_type),
-        .commit_read_addr(commit_read_addr_wire), .commit_read_data(phys_reg_data_commit),
-        .reg_write_addr(reg_write_addr), .reg_write_data(reg_write_data), 
-        .reg_write_en(reg_write_en));
+    reorder_buffer #(.ROB_SIZE(ROB_SIZE), .XLEN(XLEN))
+    rob_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
+        .alloc_pc(decode_pc), // Pass PC directly from Decode for tracking
+        .alloc_instr_type(decode_instr_type), .alloc_dest_reg(dispatch_dest_reg),
+        .alloc_phys_reg(rat_dst_phys),
+        .alloc_old_phys_reg(rat_dst_old_phys),
+        .alloc_valid(dispatch_rob_alloc), .alloc_vtype(new_vtype), .rob_full(rob_full),
+        .result0_tag(cdb0_tag), .result0_valid(cdb0_valid),
+        .result1_tag(cdb1_tag), .result1_valid(cdb1_valid),
+        .vec_result0_tag(vec_cdb0_tag), .vec_result0_valid(vec_cdb0_valid),
+        .vec_result1_tag(vec_cdb1_tag), .vec_result1_valid(vec_cdb1_valid),
+        .lsq_violation_req(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
+        .commit_valid(rob_commit_valid), .commit_instr_type(rob_commit_instr_type),
+        .commit_dest_arch(rob_commit_dest_arch_reg),
+        .commit_dest_phys(rob_commit_dest_phys_reg),
+        .commit_old_phys(rob_commit_old_phys_reg),
+        .commit_vtype(rob_commit_vtype),
+        .rob_flush_req(rob_flush_req), .rob_flush_pc(rob_flush_pc));
+
+    
+    // Debug tracking for Testbench (Simulates an ARF observer)
+    logic [NUM_INT_REGS-1:0][XLEN-1:0] debug_reg_file_internal;
+    assign debug_reg_file = debug_reg_file_internal;
+    
+    assign commit_read_addr_wire = rob_commit_dest_phys_reg; // Peek into PRF
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for (int i=0; i<NUM_INT_REGS; i++) debug_reg_file_internal[i] <= '0;
+        end else if (rob_commit_valid && (rob_commit_dest_arch_reg != 5'b0) && 
+            !(rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD || rob_commit_instr_type == `V_EXT_STORE)) begin
+            // Grab the committed data directly from the PRF and store it purely for the TB to verify
+            debug_reg_file_internal[rob_commit_dest_arch_reg] <= phys_reg_data_commit;
+        end
+    end
 
     // ========================================================================
     // SUPPORT MODULES

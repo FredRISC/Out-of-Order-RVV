@@ -1,5 +1,5 @@
 // ============================================================================
-// components/branch_predictor.sv - Simple Static Branch Predictor
+// components/branch_predictor.sv - 2-bit BHT/BTB Branch Predictor
 // ============================================================================
 
 module branch_predictor #(
@@ -21,29 +21,33 @@ module branch_predictor #(
     input branch_update_en
 );
 
-    reg [1:0] branch_history [BHT_SIZE-1:0];  // 2-bit saturating counter
+    reg [1:0] branch_history [BHT_SIZE-1:0];  // 2-bit BHT
+    reg [XLEN-1:0] target_history [BHT_SIZE-1:0]; // BTB for target addresses
     
     logic [7:0] pc_hash;
     assign pc_hash = pc[9:2];  // Hash PC to BHT index
     
     always @(*) begin
         predicted_branch = branch_history[pc_hash][1];
-        // Static prediction: backward branches taken, forward not taken
-        predicted_target = (pc[XLEN-1:0] + 32'h0) & {{(XLEN-2){1'b1}}, 2'b00};
+        predicted_target = (predicted_branch) ? target_history[pc_hash] : (pc + 4);
     end
     
+    // Update BHT and BTB on branch resolution
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int i = 0; i < BHT_SIZE; i++)
                 branch_history[i] <= 2'b01;  // Weakly not taken
+                target_history[i] <= 32'h0;
         end else if (branch_update_en) begin
             logic [7:0] update_idx;
             update_idx = resolved_pc[9:2];
             
             if (branch_taken && (branch_history[update_idx] != 2'b11)) begin
                 branch_history[update_idx] <= branch_history[update_idx] + 1;
+                target_history[update_idx] <= resolved_target; // Update target on taken branches
             end else if (!branch_taken && (branch_history[update_idx] != 2'b00)) begin
                 branch_history[update_idx] <= branch_history[update_idx] - 1;
+                // Do not update target on not-taken branches
             end
         end
     end

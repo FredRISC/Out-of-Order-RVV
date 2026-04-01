@@ -231,8 +231,10 @@ module execute_stage #(
     // or relying on valid bits from Dispatch if implemented. 
     // Here we use a placeholder check; in real design Dispatch should send distinct ops)
     logic exe_is_store, exe_is_load;
+    logic exe_is_strided;
     assign exe_is_store = (mem_operation == 4'b0001); // Defined in Dispatch
-    assign exe_is_load  = (mem_operation == 4'b0000);
+    assign exe_is_load  = (mem_operation == 4'b0000 || mem_operation == 4'b0010);
+    assign exe_is_strided = (mem_operation == 4'b0010);
     
     logic [5:0] lsu_tag_extended;
 
@@ -256,6 +258,7 @@ module execute_stage #(
         .exe_data(mem_op2[XLEN-1:0]), // TRUNCATED temporarily until VLSU is implemented
         .exe_lsq_tag(mem_lsq_tag),
         .exe_vl(mem_vl),
+        .exe_is_strided(exe_is_strided),
         .exe_load_valid(mem_valid && exe_is_load),
         .exe_store_valid(mem_valid && exe_is_store),
         

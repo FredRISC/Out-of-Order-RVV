@@ -18,8 +18,8 @@ module load_store_queue #(
     // 1. Dispatch Allocation Interface (In-Order)
     input alloc_req,
     input alloc_is_store,
-    input alloc_is_vector, // NEW: Identify vector mem ops at dispatch
-    input [31:0] alloc_vtype, // NEW: vtype from dispatch
+    input alloc_is_vector, // Identify vector mem ops at dispatch
+    input [31:0] alloc_vtype, // vtype from dispatch
     input [2:0] alloc_size,
     input [5:0] dispatch_phys_tag, // Phys tag of the instruction to be sent to CDB
     output logic [LSQ_TAG_WIDTH-1:0] alloc_tag, // queue entry's id sent to dispatch_stage for matching after addr calculation
@@ -30,6 +30,7 @@ module load_store_queue #(
     input [DLEN-1:0] exe_data,  // Store data (Expanded to DLEN)
     input [LSQ_TAG_WIDTH-1:0] exe_lsq_tag, // Which entry to update? = earlier sent alloc_tag 
     input [31:0] exe_vl,        // Vector Length arriving from Execute
+    input exe_is_strided,       //  Identifies a strided load
     input exe_load_valid,
     input exe_store_valid,
     
@@ -318,6 +319,10 @@ module load_store_queue #(
                 lsq[exe_lsq_tag].address <= exe_addr; // Calculated load address
                 lsq[exe_lsq_tag].addr_valid <= 1'b1; // Mark the address as valid
                 lsq[exe_lsq_tag].vl <= exe_vl;
+                
+                if (exe_is_strided) begin
+                    lsq[exe_lsq_tag].stride <= exe_data[XLEN-1:0]; // Dynamically update the stride!
+                end
                 
                 if (forwarding_valid) begin
                     lsq[exe_lsq_tag].data <= { {(DLEN-XLEN){1'b0}}, format_data(forwarded_data[XLEN-1:0], lsq[exe_lsq_tag].mem_size , exe_addr[1:0]) };

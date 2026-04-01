@@ -1,41 +1,34 @@
 # Out-of-Order-RVV
 
-## FredRISC: Out-of-Order RV32IMV Processor
+## Out-of-Order RV32IMV Processor Prototype
 
-This project implements a high-performance, 6-stage Out-of-Order RISC-V processor supporting the `RV32IM` base integer and multiplication extensions, along with a subset of the `RVV` (Vector) extension (`Zve32x`).
+This is a single-issue, speculatively-renamed, Out-of-Order RISC-V processor prototype. It supports the `RV32IM` base integer extensions alongside a tightly-coupled Vector Coprocessor implementing a stripped-down subset of the `Zve32x` Vector Extension.
 
-It utilizes a modern **Register Alias Table (RAT) + Physical Register File (PRF)** architecture to achieve precise out-of-order execution and hardware renaming, fully decoupling architectural state from speculative execution.
+This project serves as a comprehensive architectural study, utilizing a **Unified Scalar/Vector Datapath** and a modern, ARF-less **Register Alias Table (RAT) + Physical Register File (PRF)** architecture (inspired by the MIPS R10000) to achieve precise out-of-order execution.
 
 ### Core Architecture
 
-The processor is divided into a 6-stage pipeline:
-1. **Fetch:** Program Counter generation and instruction memory access.
-2. **Decode:** Instruction classification and immediate generation.
-3. **Dispatch:** Hardware register renaming (RAT), ROB allocation, LSQ allocation, and Reservation Station dispatch.
-4. **Issue & RegRead:** Tomasulo-based Reservation Stations (RS) hold instructions until operands are ready on the Common Data Bus (CDB). A predictive Issue Scheduler arbitrates functional units.
-5. **Execute:** Multiple encapsulated Functional Units (ALU, Pipelined Multiplier, Pipelined Divider, Vector Execution Unit, and Load/Store Queue).
-6. **Commit:** In-order retirement via the Reorder Buffer (ROB) to update the architectural register file.
-
-### Current Vector Extension Support (`LMUL = 1`)
-
-The core currently natively supports the RISC-V Vector Extension with **`LMUL = 1`** (Vector Length Multiplier). 
-
-* **Vector Length (`vl`):** Handled dynamically via physical register renaming to prevent Out-of-Order hazards.
-* **Vector Type (`vtype`):** Speculatively tracked via `vector_csr` and tunneled through the payload datapath.
-* **Execution:** A parameterized 128-bit Vector Execution Unit (VEU) utilizing 4 parallel 32-bit execution lanes.
-* **Memory:** Native 128-bit datapaths routed to the execute stage to support `VLE32.V` and `VSE32.V`.
+* **Hardware Renaming (RAT+PRF):** The design completely eliminates the traditional Architectural Register File (ARF). Speculative data lives entirely in the PRF. The ROB handles in-order retirement by updating the Commit RAT, dynamically shifting architectural pointers without copying data.
+* **Unified Issue & Payload Datapath:** To minimize code footprint, the processor utilizes highly parameterized, generic tag-based Reservation Stations. Scalar and vector instructions share the same issue logic and `reg_read_stage` routers.
+* **Heterogeneous Superscalar Backend:** The core can issue up to 5 disjoint instruction types (ALU, MEM, MUL, DIV, VEC) simultaneously to encapsulated Functional Units.
+* **Vector Coprocessor (`VLEN=128`):** A 4-lane Vector Execution Unit processes 128-bit blocks in a single cycle. `vl` and `vtype` are dynamically tracked as physical dependencies.
+* **Vector-Aware Load/Store Queue (LSQ):** Features combinational memory disambiguation and store-to-load forwarding. An embedded FSM automatically bridges the 128-bit Vector datapath with a standard 32-bit memory interface, supporting dynamic unit-strides and strided loads (SEW=32).
 
 ---
 
-### Future Roadmap: `LMUL > 1` Support
+### Verification & Physical Design Strategy
 
-Support for register grouping (`LMUL > 1`, e.g., `MAX_LMUL = 4`) will be supported in future revisions. Moving beyond `LMUL = 1` significantly increases the complexity of dependency tracking. 
+UNDER CONSTRUCTION
 
-Implementing `LMUL > 1` will require transitioning to a **Micro-op (uOp) Cracking** architecture, impacting the following modules:
+---
 
-* **`dispatch_stage.sv`:** Must detect `LMUL > 1` from the speculative `vtype` CSR and stall the frontend, breaking the single vector instruction into `LMUL` distinct uOps mapped to sequential architectural registers.
-* **`vector_rat.sv` & `vector_free_list.sv`:** Will process mapping requests sequentially over `LMUL` cycles, avoiding the need for heavily multi-ported SRAM arrays.
-* **`reorder_buffer.sv`:** Must allocate consecutive tracking entries for the cracked uOps to ensure all grouped physical registers are retired and freed correctly in-order.
-* **`reservation_station.sv`:** No major changes required if cracking is used! Each uOp acts as an independent `LMUL=1` instruction tracking its specific physical tags.
-* **`vector_execution_unit.sv`:** Executes the cracked uOps sequentially as they independently wake up from the Reservation Station.
-* **`load_store_queue.sv` (VLSU):** Must be overhauled with a state machine capable of generating multiple contiguous 128-bit memory requests from a single base address, writing each loaded block to the distinct physical registers assigned to the uOps.
+### Next-Gen Roadmap
+
+While functional, this prototype takes deliberate shortcuts to fit within a manageable Verilog footprint. A future, highly-modularized "V2" core will implement the following industry-standard techniques:
+
+1. **Decoupled Scalar/Vector Datapaths:** Separating the integer and vector pipelines after Dispatch to eliminate massive cross-domain routing complexity.
+2. **Superscalar Frontend:** Expanding the Fetch, Decode, and RAT structures to handle 2+ instructions per cycle.
+3. **Micro-op Cracking (`LMUL > 1`):** Industry cores dynamically support `LMUL=2,4,8` by stalling the decoder and "cracking" the instruction into multiple `LMUL=1` micro-operations. Our core currently only supports `LMUL=1`.
+4. **Element-Level Chaining & Pipelined VEU:** Our VEU currently computes 128 bits in one cycle. An industry core deeply pipelines the VEU and uses Bypass FIFOs to broadcast elements cycle-by-cycle, allowing dependent instructions to chain immediately.
+5. **Predictive Issue Scheduling:** Tracking functional unit latency accurately to wake up dependent instructions *before* data hits the CDB, minimizing pipeline bubbles.
+6. **Masking (`v0.t`) & Precise Exceptions (`vstart`):** Adding the vector mask register network, and robust page-fault handling. If an industry LSQ hits a Page Fault mid-vector, it halts, saves the index to the `vstart` CSR, flushes, and resumes later.
