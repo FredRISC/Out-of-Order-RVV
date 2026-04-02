@@ -26,31 +26,42 @@ parameter INST_WIDTH = 32;        // Instruction width
 // Funct7 codes
 `define FUNCT7_M_EXT   7'b0000001
 
-// ALU Operation Codes (4-bit)
-`define ALU_ADD  4'b0000
-`define ALU_SUB  4'b0001
-`define ALU_SLL  4'b0010
-`define ALU_SLT  4'b0011
-`define ALU_SLTU 4'b0100
-`define ALU_XOR  4'b0101
-`define ALU_SRL  4'b0110
-`define ALU_SRA  4'b0111
-`define ALU_OR   4'b1000
-`define ALU_AND  4'b1001
-`define ALU_VSETVL 4'b1010
-`define UNKNOWN_ALU_OP 4'b1111
+// ALU Operation Codes (5-bit)
+`define ALU_ADD    5'd0
+`define ALU_SUB    5'd1
+`define ALU_SLL    5'd2
+`define ALU_SLT    5'd3
+`define ALU_SLTU   5'd4
+`define ALU_XOR    5'd5
+`define ALU_SRL    5'd6
+`define ALU_SRA    5'd7
+`define ALU_OR     5'd8
+`define ALU_AND    5'd9
+`define ALU_VSETVL 5'd10
 
-// Vector Operation Codes (4-bit, shared with ALU_OP bus)
-`define VEC_OP_ADD 4'b0000
-`define VEC_OP_SUB 4'b0001
-`define VEC_OP_MUL 4'b0010
-`define VEC_OP_AND 4'b0011
-`define VEC_OP_OR  4'b0100
-`define VEC_OP_XOR 4'b0101
-`define VEC_OP_SLL 4'b0110
-`define VEC_OP_SRL 4'b0111
-`define VEC_OP_SRA 4'b1011
-`define UNKNOWN_VEC_OP 4'b1111
+// Branch & Jump Operations (Natively evaluated by ALU/Execute)
+`define ALU_BEQ    5'd11
+`define ALU_BNE    5'd12
+`define ALU_BLT    5'd13
+`define ALU_BGE    5'd14
+`define ALU_BLTU   5'd15
+`define ALU_BGEU   5'd16
+`define ALU_JAL    5'd17
+`define ALU_JALR   5'd18
+
+`define UNKNOWN_ALU_OP 5'd31
+
+// Vector Operation Codes (5-bit, shared with ALU_OP bus)
+`define VEC_OP_ADD 5'd0
+`define VEC_OP_SUB 5'd1
+`define VEC_OP_MUL 5'd2
+`define VEC_OP_AND 5'd3
+`define VEC_OP_OR  5'd4
+`define VEC_OP_XOR 5'd5
+`define VEC_OP_SLL 5'd6
+`define VEC_OP_SRL 5'd7
+`define VEC_OP_SRA 5'd8
+`define UNKNOWN_VEC_OP 5'd31
 
 // Reservation Station Types (for routing in dispatch)
 `define RS_TYPE_NONE 4'b0000

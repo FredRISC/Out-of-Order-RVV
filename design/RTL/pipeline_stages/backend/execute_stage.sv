@@ -27,14 +27,17 @@ module execute_stage #(
     
     // From reservation stations (ALU, MEM, MUL, DIV, VEC)
     input [XLEN-1:0] alu_op1, alu_op2, // Operand 1 (Register or PC or 0), Operand 2 (Register or Imm)
-    input [3:0] alu_operation,
+    input [XLEN-1:0] alu_pc, alu_imm,
+    input alu_predicted_branch,
+    input [XLEN-1:0] alu_predicted_target,
+    input [4:0] alu_operation,
     input alu_valid,
     input [5:0] alu_tag,
     
     input [XLEN-1:0] mem_op1, // Base Address
     input [DLEN-1:0] mem_op2, // Store Data (Scalar or Vector)
     input [XLEN-1:0] mem_imm,
-    input [3:0] mem_operation,
+    input [4:0] mem_operation,
     input mem_valid,
     input [31:0] mem_vl,
     input [5:0] mem_tag,
@@ -49,7 +52,7 @@ module execute_stage #(
     input [5:0] div_tag,
     
     input [VLEN-1:0] vec_op1, vec_op2,
-    input [3:0] vec_operation,
+    input [4:0] vec_operation,
     input vec_valid,
     input [5:0] vec_tag,
     input [31:0] vec_vl,
@@ -86,6 +89,17 @@ module execute_stage #(
     output lsq_flush,
     output [5:0] lsq_violation_tag,
     
+    // Pipeline Flush Requests to ROB (Branch & Memory)
+    output logic alu_flush_req,
+    output logic [5:0] alu_flush_tag,
+    output logic [XLEN-1:0] alu_flush_target,
+    
+    // Branch Predictor Update Interface
+    output logic branch_update_req,
+    output logic [XLEN-1:0] branch_update_pc,
+    output logic [XLEN-1:0] branch_update_target,
+    output logic branch_update_taken,
+
     // CDB 0 Broadcast Interface (Scheduled - ALU/MUL/VEC)
     output logic [XLEN-1:0] cdb0_result,
     output logic [5:0] cdb0_tag,
@@ -232,9 +246,9 @@ module execute_stage #(
     // Here we use a placeholder check; in real design Dispatch should send distinct ops)
     logic exe_is_store, exe_is_load;
     logic exe_is_strided;
-    assign exe_is_store = (mem_operation == 4'b0001); // Defined in Dispatch
-    assign exe_is_load  = (mem_operation == 4'b0000 || mem_operation == 4'b0010);
-    assign exe_is_strided = (mem_operation == 4'b0010);
+    assign exe_is_store = (mem_operation == 5'b00001); // Defined in Dispatch
+    assign exe_is_load  = (mem_operation == 5'b00000 || mem_operation == 5'b00010);
+    assign exe_is_strided = (mem_operation == 5'b00010);
     
     logic [5:0] lsu_tag_extended;
 
@@ -388,6 +402,55 @@ module execute_stage #(
     end
 
     // ========================================================================
+    // Branch Evaluation (Using the existing ALU Result)
+    // ========================================================================
+    // ARCHITECTURAL NOTE: In this V1 prototype, unconditional jumps (JAL/JALR) are 
+    // resolved late in the Execute stage to simplify the flush/recovery architecture (via ROB).
+    // They update the predictor here so Fetch can learn the jump target for next time.
+    // Future Upgrade ("Frontend Redirect"): Decode stage should calculate JAL targets and 
+    // redirect Fetch immediately without touching the ROB, saving penalty cycles on BTB misses.
+
+    logic actual_taken;
+    logic [XLEN-1:0] actual_target;
+    
+    logic is_branch, is_jal, is_jalr;
+    assign is_branch = (alu_operation >= `ALU_BEQ && alu_operation <= `ALU_BGEU);
+    assign is_jal = (alu_operation == `ALU_JAL);
+    assign is_jalr = (alu_operation == `ALU_JALR);
+    
+    always @(*) begin
+        actual_taken = 1'b0;
+        actual_target = alu_pc + alu_imm; // Default target calculation for JAL and Branch
+        
+        if (is_jal) begin
+            actual_taken = 1'b1;
+        end else if (is_jalr) begin
+            actual_taken = 1'b1;
+            actual_target = (alu_op1 + alu_imm) & ~32'h1; // JALR Target (rs1 + imm, clear LSB); all RISC-V instructions must be aligned to 2-byte boundaries
+        end else if (is_branch) begin
+            actual_taken = (alu_result_selected == 32'h1); // Uses the native ALU branch evaluation
+        end
+        
+        alu_flush_req = 1'b0;
+        alu_flush_target = 32'h0;
+        alu_flush_tag = alu_tag_selected;
+        
+        // Detect mispredictions (Direction mismatch OR Target Aliasing)
+        if (alu_result_valid && (is_branch || is_jal || is_jalr)) begin // We predict target address for JAL/JALR/Branch
+            if ((actual_taken != alu_predicted_branch) || (actual_taken && (actual_target != alu_predicted_target))) begin
+                alu_flush_req = 1'b1; // prediction failed - req sent to the ROB entry to mark it as violation (Delayed Flush)
+                alu_flush_target = actual_taken ? actual_target : (alu_pc + 4);
+            end
+        end
+    end
+    
+    // If prediction failed, update the predictor if branch was taken
+    assign branch_update_req = alu_result_valid && (is_branch || is_jal || is_jalr); 
+    assign branch_update_pc = alu_pc; // This is the resolved_pc input in branch_predictor module
+    assign branch_update_target = actual_target;
+    assign branch_update_taken = actual_taken;
+
+    // ========================================================================
     // CDB 0: Scheduled Bus (ALU, MUL)
     // The issue_scheduler guarantees these will NEVER collide!
     // ========================================================================
@@ -398,7 +461,9 @@ module execute_stage #(
         
         if (alu_result_valid) begin
             cdb0_valid = 1'b1;
-            cdb0_result = alu_result_selected;
+            // Jumps write pc + 4 to rd, not the standard ALU result
+            if (is_jal || is_jalr) cdb0_result = alu_pc + 4;
+            else cdb0_result = alu_result_selected;
             cdb0_tag = alu_tag_selected;
         end else if (mul_result_valid) begin
             cdb0_valid = 1'b1;

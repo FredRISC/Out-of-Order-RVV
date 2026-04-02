@@ -27,26 +27,26 @@ module reservation_station #(
     input [RS_TAG_WIDTH-1:0] vl_tag_in,
     input vl_valid_in,
     input use_vl_in,
-    input src1_is_vec_in,
-    input src2_is_vec_in,
     input [XLEN-1:0] imm_data, // Constant payload
     input [XLEN-1:0] vtype_data, // For vector instructions
+    input [XLEN-1:0] pc_data,  // Constant payload
+    input predicted_branch_in,
+    input [XLEN-1:0] predicted_target_in,
+    input [4:0] alu_op,
+    input dispatch_valid,
+    input [RS_TAG_WIDTH-1:0] dest_tag_in, // Tag assigned to the instruction; used for CDB broadcast
+    input [LSQ_TAG_WIDTH-1:0] lsq_tag_in, // Tag for LSQ entry (if load/store)
     
-    // Scalar CDB Broadcast Interfaces (Tags Only)
+    // CDB 0 Broadcast Interface (Tags Only!)
     input [RS_TAG_WIDTH-1:0] cdb0_tag,
     input cdb0_valid,
+    
+    // CDB 1 Broadcast Interface (Tags Only!)
     input [RS_TAG_WIDTH-1:0] cdb1_tag,
     input cdb1_valid,
     
-    // Vector CDB Broadcast Interfaces (Tags Only)
-    input [RS_TAG_WIDTH-1:0] vec_cdb0_tag,
-    input vec_cdb0_valid,
-    input [RS_TAG_WIDTH-1:0] vec_cdb1_tag,
-    input vec_cdb1_valid,
-    
     // Predictive Issue Scheduling Interface
     output logic issue_req,
-
     input logic issue_grant,
     
     // RegRead interface (Outputs tags & constants, NOT data)
@@ -60,7 +60,9 @@ module reservation_station #(
     output [XLEN-1:0] issue_imm,
     output [XLEN-1:0] issue_vtype,
     output [XLEN-1:0] issue_pc,
-    output [3:0] execute_op,
+    output logic issue_predicted_branch,
+    output [XLEN-1:0] issue_predicted_target,
+    output [4:0] execute_op,
     output [LSQ_TAG_WIDTH-1:0] execute_lsq_tag,
     output execute_valid,
     
@@ -84,7 +86,7 @@ module reservation_station #(
         logic vl_ready;
         logic use_vl;
         logic [RS_TAG_WIDTH-1:0] dest_tag;
-        logic [3:0] alu_op_val;
+        logic [4:0] alu_op_val;
         logic [LSQ_TAG_WIDTH-1:0] lsq_tag;
         logic [XLEN-1:0] imm_data;
         logic [XLEN-1:0] vtype_data;
@@ -92,6 +94,8 @@ module reservation_station #(
         logic use_rs1;
         logic use_rs2;
         logic use_pc;
+        logic predicted_branch;
+        logic [XLEN-1:0] predicted_target;
         logic busy;
     } rs_entry_t;
     
@@ -145,7 +149,7 @@ module reservation_station #(
                 rs_entries[i].src1_is_vec <= 1'b0;
                 rs_entries[i].src2_is_vec <= 1'b0;
                 rs_entries[i].dest_tag <= {RS_TAG_WIDTH{1'b0}};
-                rs_entries[i].alu_op_val <= 4'b0;
+                rs_entries[i].alu_op_val <= 5'b0;
                 rs_entries[i].lsq_tag <= {LSQ_TAG_WIDTH{1'b0}};
                 rs_entries[i].imm_data <= {XLEN{1'b0}};
                 rs_entries[i].vtype_data <= {XLEN{1'b0}};
@@ -153,6 +157,8 @@ module reservation_station #(
                 rs_entries[i].use_rs1 <= 1'b0;
                 rs_entries[i].use_rs2 <= 1'b0;
                 rs_entries[i].use_pc <= 1'b0;
+                rs_entries[i].predicted_branch <= 1'b0;
+                rs_entries[i].predicted_target <= {XLEN{1'b0}};
                 rs_entries[i].use_vl <= 1'b0;
                 rs_entries[i].vl_tag_val <= {RS_TAG_WIDTH{1'b0}};
                 rs_entries[i].vl_ready <= 1'b0;
@@ -190,6 +196,8 @@ module reservation_station #(
                 rs_entries[alloc_idx].use_rs1 <= use_rs1_in;
                 rs_entries[alloc_idx].use_rs2 <= use_rs2_in;
                 rs_entries[alloc_idx].use_pc <= use_pc_in;
+                rs_entries[alloc_idx].predicted_branch <= predicted_branch_in;
+                rs_entries[alloc_idx].predicted_target <= predicted_target_in;
 
                 // Handle Src1
                 rs_entries[alloc_idx].src1_tag_val <= src1_tag;
@@ -242,7 +250,7 @@ module reservation_station #(
                 rs_entries[issue_idx].src1_ready <= 1'b0;
                 rs_entries[issue_idx].src2_ready <= 1'b0;
                 rs_entries[issue_idx].dest_tag <= {RS_TAG_WIDTH{1'b0}};
-                rs_entries[issue_idx].alu_op_val <= 4'b0;
+                rs_entries[issue_idx].alu_op_val <= 5'b0;
                 rs_entries[issue_idx].lsq_tag <= {LSQ_TAG_WIDTH{1'b0}};
                 rs_entries[issue_idx].imm_data <= {XLEN{1'b0}};
                 rs_entries[issue_idx].vtype_data <= {XLEN{1'b0}};
@@ -250,6 +258,8 @@ module reservation_station #(
                 rs_entries[issue_idx].use_rs1 <= 1'b0;
                 rs_entries[issue_idx].use_rs2 <= 1'b0;
                 rs_entries[issue_idx].use_pc <= 1'b0;
+                rs_entries[issue_idx].predicted_branch <= 1'b0;
+                rs_entries[issue_idx].predicted_target <= {XLEN{1'b0}};
                 rs_entries[issue_idx].use_vl <= 1'b0;
                 rs_entries[issue_idx].vl_tag_val <= {RS_TAG_WIDTH{1'b0}};
                 rs_entries[issue_idx].vl_ready <= 1'b0;
@@ -298,6 +308,8 @@ module reservation_station #(
     assign issue_imm = rs_entries[issue_idx].imm_data;
     assign issue_vtype = rs_entries[issue_idx].vtype_data;
     assign issue_pc = rs_entries[issue_idx].pc_data;
+    assign issue_predicted_branch = rs_entries[issue_idx].predicted_branch;
+    assign issue_predicted_target = rs_entries[issue_idx].predicted_target;
     assign execute_op = rs_entries[issue_idx].alu_op_val;
     assign execute_lsq_tag = rs_entries[issue_idx].lsq_tag;
     

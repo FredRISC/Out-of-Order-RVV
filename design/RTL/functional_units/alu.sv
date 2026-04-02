@@ -13,7 +13,7 @@ module alu #(
     
     input [XLEN-1:0] operand1,
     input [XLEN-1:0] operand2,
-    input [3:0] alu_op,
+    input [4:0] alu_op,
     input valid_in,
     
     output reg [XLEN-1:0] result,
@@ -66,6 +66,15 @@ module alu #(
                 `ALU_SLT:  result <= ($signed(operand1) < $signed(operand2)) ? 32'h1 : 32'h0;
                 `ALU_SLTU: result <= (operand1 < operand2) ? 32'h1 : 32'h0;
                 `ALU_VSETVL: result <= ((operand1 > vlmax) || (operand1 == 32'h0)) ? vlmax : operand1; // vsetvli; operand1 = AVL
+                
+                // Branch condition evaluations (Output 1 if taken, 0 if not taken)
+                `ALU_BEQ:  result <= (operand1 == operand2) ? 32'h1 : 32'h0;
+                `ALU_BNE:  result <= (operand1 != operand2) ? 32'h1 : 32'h0;
+                `ALU_BLT:  result <= ($signed(operand1) < $signed(operand2)) ? 32'h1 : 32'h0;
+                `ALU_BGE:  result <= ($signed(operand1) >= $signed(operand2)) ? 32'h1 : 32'h0;
+                `ALU_BLTU: result <= (operand1 < operand2) ? 32'h1 : 32'h0;
+                `ALU_BGEU: result <= (operand1 >= operand2) ? 32'h1 : 32'h0;
+                `ALU_JAL, `ALU_JALR: result <= 32'h0; // Target & return addr computed in execute_stage
                 default:   result <= 32'h0;
             endcase
         end else begin

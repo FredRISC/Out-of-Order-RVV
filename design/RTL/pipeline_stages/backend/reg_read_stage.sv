@@ -2,8 +2,9 @@
 // reg_read_stage.sv - Payload / Register Read Stage
 // ============================================================================
 // Receives issued tags from the Reservation Stations, fetches data from the 
-// Physical Register Files, handles CDB forwarding (bypass), multiplexes constants
+// Physical Register Files, multiplexes constants
 // (PC/Immediates), and flops the payload to the Execute Stage.
+// CDB broadcasts in this stage are currently redundant
 
 `include "../../riscv_header.sv"
 
@@ -23,30 +24,32 @@ module reg_read_stage #(
     input alu_issue_valid,
     input [RS_TAG_WIDTH-1:0] alu_issue_src1_tag, alu_issue_src2_tag, alu_issue_dest_tag,
     input [XLEN-1:0] alu_issue_imm, alu_issue_pc,
-    input [3:0] alu_issue_op,
+    input alu_issue_predicted_branch,
+    input [XLEN-1:0] alu_issue_predicted_target,
+    input [4:0] alu_issue_op,
     input alu_use_rs1, alu_use_rs2, alu_use_pc, // Multiplexing control
 
     input mem_issue_valid,
     input [RS_TAG_WIDTH-1:0] mem_issue_src1_tag, mem_issue_src2_tag, mem_issue_dest_tag,
     input [RS_TAG_WIDTH-1:0] mem_issue_vl_tag,
     input [XLEN-1:0] mem_issue_imm,
-    input [3:0] mem_issue_op,
+    input [4:0] mem_issue_op,
     input [LSQ_TAG_WIDTH-1:0] mem_issue_lsq_tag,
     input mem_use_rs1, mem_use_rs2,
     input mem_use_vl,
 
     input mul_issue_valid,
     input [RS_TAG_WIDTH-1:0] mul_issue_src1_tag, mul_issue_src2_tag, mul_issue_dest_tag,
-    input [3:0] mul_issue_op,
+    input [4:0] mul_issue_op,
 
     input div_issue_valid,
     input [RS_TAG_WIDTH-1:0] div_issue_src1_tag, div_issue_src2_tag, div_issue_dest_tag,
-    input [3:0] div_issue_op,
+    input [4:0] div_issue_op,
 
     input vec_issue_valid,
     input [RS_TAG_WIDTH-1:0] vec_issue_src1_tag, vec_issue_src2_tag, vec_issue_dest_tag,
     input [RS_TAG_WIDTH-1:0] vec_issue_vl_tag,
-    input [3:0] vec_issue_op,
+    input [4:0] vec_issue_op,
     input vec_use_vl,
     input [XLEN-1:0] vec_issue_vtype,
 
@@ -85,6 +88,9 @@ module reg_read_stage #(
     // --------------------------------------------------------------------
     output logic alu_valid_exec, mem_valid_exec, mul_valid_exec, div_valid_exec, vec_valid_exec,
     output logic [XLEN-1:0] alu_op1_exec, alu_op2_exec,
+    output logic [XLEN-1:0] alu_pc_exec, alu_imm_exec,
+    output logic alu_predicted_branch_exec,
+    output logic [XLEN-1:0] alu_predicted_target_exec,
     output logic [XLEN-1:0] mem_op1_exec, 
     output logic [DLEN-1:0] mem_op2_exec,
     output logic [XLEN-1:0] mem_imm_exec,
@@ -96,7 +102,7 @@ module reg_read_stage #(
     output logic [31:0] vec_vtype_exec,
     
     output logic [RS_TAG_WIDTH-1:0] alu_tag_exec, mem_tag_exec, mul_tag_exec, div_tag_exec, vec_tag_exec,
-    output logic [3:0] alu_op_exec, mem_op_exec, vec_op_exec,
+    output logic [4:0] alu_op_exec, mem_op_exec, vec_op_exec,
     output logic [LSQ_TAG_WIDTH-1:0] mem_lsq_tag_exec
 );
 
@@ -226,15 +232,19 @@ module reg_read_stage #(
                 alu_op2_exec <= alu_src2_bypassed;
                 alu_tag_exec <= alu_issue_dest_tag;
                 alu_op_exec  <= alu_issue_op;
+                alu_pc_exec  <= alu_issue_pc;
+                alu_imm_exec <= alu_issue_imm;
+                alu_predicted_branch_exec <= alu_issue_predicted_branch;
+                alu_predicted_target_exec <= alu_issue_predicted_target;
             end
             
             // MEM Flop
             mem_valid_exec <= mem_issue_valid;
             if (mem_issue_valid) begin
-                // mem_issue_op: 0001 = Store. If it's a Vector Store, pass the 128-bit VPRF data.
+                // mem_issue_op: 5'b00001 = Store. If it's a Vector Store, pass the 128-bit VPRF data.
                 // If it's a Vector Load, pass the scalar rs2 (the stride value) instead!
                 mem_op1_exec <= mem_src1_bypassed;
-                if (mem_use_vl && (mem_issue_op == 4'b0001)) mem_op2_exec <= mem_vec_src2_bypassed; 
+                if (mem_use_vl && (mem_issue_op == 5'b00001)) mem_op2_exec <= mem_vec_src2_bypassed; 
                 else mem_op2_exec <= { {(DLEN-XLEN){1'b0}}, mem_src2_bypassed }; // 32-bit zero-extended data
                 mem_imm_exec <= mem_issue_imm;
                 mem_tag_exec <= mem_issue_dest_tag;

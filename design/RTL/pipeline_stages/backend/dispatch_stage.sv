@@ -28,6 +28,8 @@ module dispatch_stage #(
     input [INST_WIDTH-1:0] instr_in,
     input [3:0] instr_type,
     input [XLEN-1:0] pc_in,
+    input predicted_branch_in,
+    input [XLEN-1:0] predicted_target_in,
     input valid_in,
 
     // Essentially the dispatch_stage initialization signal
@@ -53,7 +55,7 @@ module dispatch_stage #(
     // Reservation Station Interface
     output rs_alloc_valid, // Requst for RS allocation
     output [3:0] rs_type,  // Which RS to use (ALU, MEM, MUL, DIV, VEC)
-    output [3:0] alu_op, // Encoded Control signals for ALU
+    output logic [4:0] alu_op, // Encoded Control signals for ALU
     output [XLEN-1:0] imm_out,
     output [XLEN-1:0] pc_out,
     output use_rs1_out,
@@ -62,6 +64,8 @@ module dispatch_stage #(
     output use_vl_out,
     output dispatch_src1_is_vec,
     output dispatch_src2_is_vec,
+    output dispatch_predicted_branch, // tunnel to issue_stage
+    output [XLEN-1:0] dispatch_predicted_target, // tunnel to issue_stage
     
     // Vector CSR Interface
     input [31:0] spec_vtype, // Only read from CSR
@@ -226,7 +230,7 @@ module dispatch_stage #(
     assign dest_reg = dst_arch_internal; // Dummied as x0 for dest-less scalar instruction.
 
     // Tunnel Vector Configuration through unused RS payload fields!
-    assign imm_out = imm_extended; // No more tunneling
+    assign imm_out = imm_extended; 
     assign pc_out =  pc_in;
     assign vtype_out = spec_vtype;
 
@@ -235,6 +239,9 @@ module dispatch_stage #(
     assign use_pc_out = (instr_type == `IBASE_AUIPC || instr_type == `IBASE_JAL || instr_type == `IBASE_JALR || instr_type == `IBASE_BRANCH);
     assign use_vl_out = (instr_type == `V_EXT_VEC || instr_type == `V_EXT_LOAD || instr_type == `V_EXT_STORE);
     
+    assign dispatch_predicted_branch = predicted_branch_in;
+    assign dispatch_predicted_target = predicted_target_in;
+
     // Pass domain tags to RS for correct CDB snooping
     assign dispatch_src1_is_vec = is_vec_arith;
     assign dispatch_src2_is_vec = (is_vec_arith || is_vec_store);
@@ -316,27 +323,33 @@ module dispatch_stage #(
         end else if (instr_type == `IBASE_BRANCH) begin
             // Branch Operation Decoding
             case (funct3)
-                3'b000, 3'b001: alu_op = `ALU_SUB;  // BEQ, BNE
-                3'b100, 3'b101: alu_op = `ALU_SLT;  // BLT, BGE
-                3'b110, 3'b111: alu_op = `ALU_SLTU; // BLTU, BGEU
-                default:        alu_op = `ALU_SUB;
+                3'b000: alu_op = `ALU_BEQ;
+                3'b001: alu_op = `ALU_BNE;
+                3'b100: alu_op = `ALU_BLT;
+                3'b101: alu_op = `ALU_BGE;
+                3'b110: alu_op = `ALU_BLTU;
+                3'b111: alu_op = `ALU_BGEU;
+                default: alu_op = `UNKNOWN_ALU_OP;
             endcase
+        end else if (instr_type == `IBASE_JAL) begin
+            alu_op = `ALU_JAL;
+        end else if (instr_type == `IBASE_JALR) begin
+            alu_op = `ALU_JALR;
         end else if (instr_type == `M_EXT_MUL || instr_type == `M_EXT_DIV) begin
             // M-Extension Operation Decoding
             // funct3 maps directly to the operation subtype (MUL, MULH, DIV, REM, etc.)
-            alu_op = {1'b0, funct3};
+            alu_op = {2'b00, funct3};
         end else if (instr_type == `V_EXT_CONFIG) begin
             // VSETVLI requires special ALU handling to compute min(AVL, VLMAX)
             alu_op = `ALU_VSETVL;
         end else if (instr_type == `IBASE_STORE || instr_type == `V_EXT_STORE) begin
-            // execute_stage expects 0001 for stores
-            alu_op = 4'b0001;
+            alu_op = 5'b00001; // See reg_read_stage.sv for how this routes store data
         end else if (instr_type == `IBASE_LOAD || instr_type == `V_EXT_LOAD) begin
-            // execute_stage expects 0000 for unit-stride loads, 0010 for strided loads
+            // execute_stage expects 00000 for unit-stride loads, 00010 for strided loads
             if (instr_type == `V_EXT_LOAD && instr_in[27:26] == 2'b10) begin
-                alu_op = 4'b0010;
+                alu_op = 5'b00010;
             end else begin
-                alu_op = 4'b0000;
+                alu_op = 5'b00000;
             end
         end else begin
             alu_op = `ALU_ADD;

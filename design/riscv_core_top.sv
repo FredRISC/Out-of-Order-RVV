@@ -1,10 +1,11 @@
 // ============================================================================
 // riscv_core_top.sv
 // ============================================================================
-// ARCHITECTURE: 6-stage OoO processor with RAT + PRF + ARF renaming scheme
+// ARCHITECTURE: 6-stage OoO processor with RAT + PRF renaming scheme
 // Key Notes: 
-// - ROB is for in-oreder commit only, not data storage
+// - ROB is for in-oreder commit only, no data storage
 // - Speculative data stored in physical_register_file
+// commit state is tracked by arch_RAT and arch_free_list
 
 `include "riscv_header.sv"
 
@@ -46,6 +47,8 @@ module riscv_core_top (
     logic [3:0] decode_instr_type;
     logic fetch_valid, decode_valid, dispatch_valid;
     logic [3:0] dispatch_rs_type;
+    logic fetch_predicted_branch, decode_predicted_branch, dispatch_predicted_branch;
+    logic [XLEN-1:0] fetch_predicted_target, decode_predicted_target, dispatch_predicted_target;
     logic dispatch_rs_alloc, dispatch_rob_alloc, dispatch_lsq_alloc;
     logic dispatch_src1_valid, dispatch_src2_valid;
     logic dispatch_lsq_is_store;
@@ -57,7 +60,7 @@ module riscv_core_top (
     // Dispatch outputs
     logic [XLEN-1:0] dispatch_imm, dispatch_pc;
     logic [4:0] dispatch_dest_reg;
-    logic [3:0] dispatch_alu_op;
+    logic [4:0] dispatch_alu_op;
     logic dispatch_use_rs1, dispatch_use_rs2, dispatch_use_pc;
     logic [31:0] dispatch_vtype;
     logic dispatch_use_vl;
@@ -74,7 +77,7 @@ module riscv_core_top (
     
     // RS signals (5 types)
     logic alu_rs_full, mem_rs_full, mul_rs_full, div_rs_full, vec_rs_full;
-    logic [3:0] alu_operation, mem_operation, vec_operation;
+    logic [4:0] alu_operation, mem_operation, vec_operation;
     logic alu_valid, mem_valid, mul_valid, div_valid, vec_valid;
     logic [LSQ_TAG_WIDTH-1:0] mem_lsq_tag; // To Execute
     
@@ -119,12 +122,17 @@ module riscv_core_top (
     logic [5:0] vec_issue_src1_tag, vec_issue_src2_tag, vec_issue_dest_tag, vec_issue_vl_tag;
     logic [XLEN-1:0] alu_issue_imm, alu_issue_pc, mem_issue_imm;
     logic [XLEN-1:0] vec_issue_vtype;
-    logic [3:0] alu_issue_op, mem_issue_op, mul_issue_op, div_issue_op, vec_issue_op;
+    logic alu_issue_predicted_branch;
+    logic [XLEN-1:0] alu_issue_predicted_target;
+    logic [4:0] alu_issue_op, mem_issue_op, mul_issue_op, div_issue_op, vec_issue_op;
     logic alu_issue_use_rs1, alu_issue_use_rs2, alu_issue_use_pc, mem_issue_use_rs1, mem_issue_use_rs2, mem_issue_use_vl, vec_issue_use_vl;
     logic [LSQ_TAG_WIDTH-1:0] mem_issue_lsq_tag;
 
     // RegRead Stage -> Execute Stage Wires (To be driven by reg_read_stage)
     logic [XLEN-1:0] alu_op1, alu_op2, mem_op1, mul_op1, mul_op2, div_op1, div_op2;
+    logic [XLEN-1:0] alu_pc_exec, alu_imm_exec;
+    logic alu_predicted_branch_exec;
+    logic [XLEN-1:0] alu_predicted_target_exec;
     logic [DLEN-1:0] mem_op2;
     logic [XLEN-1:0] mem_imm_exec;
     logic [31:0] mem_vl_exec;
@@ -147,12 +155,17 @@ module riscv_core_top (
     logic [XLEN-1:0] rob_flush_pc;
     logic [31:0] rob_commit_vtype;
     
+    logic branch_update_req, branch_update_taken;
+    logic [XLEN-1:0] branch_update_pc, branch_update_target;
+    logic alu_flush_req;
+    logic [5:0] alu_flush_tag;
+    logic [XLEN-1:0] alu_flush_target;
      
     // Control signals
-    logic flush_pipeline, branch_mispredict;
+    logic flush_pipeline;
     logic stall_fetch, stall_decode, stall_dispatch;
-    logic [XLEN-1:0] branch_target;
     logic [XLEN-1:0] flush_target_pc_wire;
+
     logic lsq_full;
     logic lsq_flush_req;
     logic [5:0] lsq_violation_tag;
@@ -172,8 +185,9 @@ module riscv_core_top (
     
     decode_stage #(.XLEN(XLEN), .INST_WIDTH(INST_WIDTH), .NUM_INT_REGS(NUM_INT_REGS))
     decode_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline), .stall(stall_decode),
-        .instr_in(fetch_instr), .pc_in(fetch_pc), .valid_in(fetch_valid),
+        .instr_in(fetch_instr), .pc_in(fetch_pc), .predicted_branch_in(fetch_predicted_branch), .predicted_target_in(fetch_predicted_target), .valid_in(fetch_valid),
         .instr_type_out(decode_instr_type), .pc_out(decode_pc),
+        .predicted_branch_out(decode_predicted_branch), .predicted_target_out(decode_predicted_target),
         .instr_out(decode_instr), .valid_out(decode_valid));
 
     // ========================================================================
@@ -250,7 +264,8 @@ module riscv_core_top (
 
     dispatch_stage #(.XLEN(XLEN), .INST_WIDTH(INST_WIDTH), .NUM_INT_REGS(NUM_INT_REGS), .NUM_PHYS_REGS(NUM_PHYS_REGS), .LSQ_TAG_WIDTH(LSQ_TAG_WIDTH))
     dispatch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_dispatch), .flush(flush_pipeline),
-        .instr_in(decode_instr), .instr_type(decode_instr_type), .pc_in(decode_pc), .valid_in(decode_valid),
+        .instr_in(decode_instr), .instr_type(decode_instr_type), .pc_in(decode_pc), 
+        .predicted_branch_in(decode_predicted_branch), .predicted_target_in(decode_predicted_target), .valid_in(decode_valid),
         .free_phys_reg(free_phys_reg),
         .free_vphys_reg(free_vphys_reg),
         .commit_arch_reg(rob_commit_dest_arch_reg), .commit_phys_reg(rob_commit_dest_phys_reg), .commit_rat(commit_rat),
@@ -260,6 +275,8 @@ module riscv_core_top (
         .use_rs1_out(dispatch_use_rs1), .use_rs2_out(dispatch_use_rs2), .use_pc_out(dispatch_use_pc),
         .use_vl_out(dispatch_use_vl),
         .dispatch_src1_is_vec(dispatch_src1_is_vec), .dispatch_src2_is_vec(dispatch_src2_is_vec),
+        .dispatch_predicted_branch(dispatch_predicted_branch),
+        .dispatch_predicted_target(dispatch_predicted_target),
         .spec_vtype(spec_vtype), .vtype_out(dispatch_vtype),
         .vtype_update_en(vtype_update_en), .new_vtype(new_vtype),
         .dest_reg(dispatch_dest_reg),
@@ -290,6 +307,8 @@ module riscv_core_top (
         .dispatch_use_vl(dispatch_use_vl), .dispatch_vl_tag(spec_vl_tag), .dispatch_vl_valid(phys_reg_status[spec_vl_tag]),
         .dispatch_imm(dispatch_imm), .dispatch_vtype(dispatch_vtype), .dispatch_pc(dispatch_pc),
         .dispatch_alu_op(dispatch_alu_op), .dispatch_dest_tag(rat_dst_phys),
+        .dispatch_predicted_branch(dispatch_predicted_branch),
+        .dispatch_predicted_target(dispatch_predicted_target),
         .dispatch_src1_is_vec(dispatch_src1_is_vec), .dispatch_src2_is_vec(dispatch_src2_is_vec),
         .dispatch_lsq_tag(dispatch_lsq_tag),
         .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
@@ -306,6 +325,8 @@ module riscv_core_top (
         .alu_issue_src2_tag(alu_issue_src2_tag), .alu_issue_dest_tag(alu_issue_dest_tag),
         .alu_issue_use_rs1(alu_issue_use_rs1), .alu_issue_use_rs2(alu_issue_use_rs2), .alu_issue_use_pc(alu_issue_use_pc),
         .alu_issue_imm(alu_issue_imm), .alu_issue_pc(alu_issue_pc), .alu_issue_op(alu_issue_op),
+        .alu_issue_predicted_branch(alu_issue_predicted_branch),
+        .alu_issue_predicted_target(alu_issue_predicted_target),
         
         .mem_issue_valid(mem_issue_valid), .mem_issue_src1_tag(mem_issue_src1_tag),
         .mem_issue_src2_tag(mem_issue_src2_tag), .mem_issue_dest_tag(mem_issue_dest_tag),
@@ -335,6 +356,8 @@ module riscv_core_top (
         .clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
         .alu_issue_valid(alu_issue_valid), .alu_issue_src1_tag(alu_issue_src1_tag), .alu_issue_src2_tag(alu_issue_src2_tag),
         .alu_issue_dest_tag(alu_issue_dest_tag), .alu_issue_imm(alu_issue_imm), .alu_issue_pc(alu_issue_pc),
+        .alu_issue_predicted_branch(alu_issue_predicted_branch),
+        .alu_issue_predicted_target(alu_issue_predicted_target),
         .alu_issue_op(alu_issue_op), .alu_use_rs1(alu_issue_use_rs1), .alu_use_rs2(alu_issue_use_rs2), .alu_use_pc(alu_issue_use_pc),
         .mem_issue_valid(mem_issue_valid), .mem_issue_src1_tag(mem_issue_src1_tag), .mem_issue_src2_tag(mem_issue_src2_tag),
         .mem_issue_dest_tag(mem_issue_dest_tag), .mem_issue_imm(mem_issue_imm), .mem_issue_op(mem_issue_op),
@@ -355,6 +378,8 @@ module riscv_core_top (
         .vec_cdb1_valid(vec_cdb1_valid), .vec_cdb1_tag(vec_cdb1_tag), .vec_cdb1_result(vec_cdb1_result),
         .alu_valid_exec(alu_valid), .mem_valid_exec(mem_valid), .mul_valid_exec(mul_valid), .div_valid_exec(div_valid), .vec_valid_exec(vec_valid),
         .alu_op1_exec(alu_op1), .alu_op2_exec(alu_op2), .mem_op1_exec(mem_op1), .mem_op2_exec(mem_op2), .mem_imm_exec(mem_imm_exec), .mem_vl_exec(mem_vl_exec),
+        .alu_pc_exec(alu_pc_exec), .alu_imm_exec(alu_imm_exec), .alu_predicted_branch_exec(alu_predicted_branch_exec),
+        .alu_predicted_target_exec(alu_predicted_target_exec),
         .mul_op1_exec(mul_op1), .mul_op2_exec(mul_op2), .div_op1_exec(div_op1), .div_op2_exec(div_op2),
         .vec_op1_exec(vec_op1), .vec_op2_exec(vec_op2),
         .vec_vl_exec(vec_vl_exec), .vec_vtype_exec(vec_vtype_exec),
@@ -378,6 +403,8 @@ module riscv_core_top (
         .alloc_phys_tag(rat_dst_phys), .alloc_tag(lsq_alloc_tag_from_exec),
         .lsq_full(lsq_full),
         .alu_op1(alu_op1), .alu_op2(alu_op2), .alu_operation(alu_operation),
+        .alu_pc(alu_pc_exec), .alu_imm(alu_imm_exec), .alu_predicted_branch(alu_predicted_branch_exec),
+        .alu_predicted_target(alu_predicted_target_exec),
         .alu_valid(alu_valid), .alu_tag(alu_tag),
         .mem_op1(mem_op1), .mem_op2(mem_op2), .mem_imm(mem_imm_exec), .mem_vl(mem_vl_exec), .mem_operation(mem_operation),
         .mem_valid(mem_valid), .mem_tag(mem_tag), .mem_lsq_tag(mem_lsq_tag),
@@ -392,7 +419,9 @@ module riscv_core_top (
         .dmem_write_en(dmem_write_en), .dmem_be(dmem_be),
         .dmem_write_ready(dmem_write_ready), // Default to 1'b1 in testbench if no complex memory
         .commit_lsq(rob_commit_valid && (rob_commit_instr_type == `IBASE_STORE || rob_commit_instr_type == `IBASE_LOAD)),
-        .lsq_flush(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
+        .alu_flush_req(alu_flush_req), .alu_flush_tag(alu_flush_tag), .alu_flush_target(alu_flush_target),
+        .lsq_flush_req(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
+        .branch_update_req(branch_update_req), .branch_update_pc(branch_update_pc), .branch_update_target(branch_update_target), .branch_update_taken(branch_update_taken),
         .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
         .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
         .vec_cdb0_result(vec_cdb0_result), .vec_cdb0_tag(vec_cdb0_tag), .vec_cdb0_valid(vec_cdb0_valid),
@@ -416,6 +445,7 @@ module riscv_core_top (
         .result1_tag(cdb1_tag), .result1_valid(cdb1_valid),
         .vec_result0_tag(vec_cdb0_tag), .vec_result0_valid(vec_cdb0_valid),
         .vec_result1_tag(vec_cdb1_tag), .vec_result1_valid(vec_cdb1_valid),
+        .alu_flush_req(alu_flush_req), .alu_flush_tag(alu_flush_tag), .alu_flush_target(alu_flush_target),
         .lsq_violation_req(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
         .commit_valid(rob_commit_valid), .commit_instr_type(rob_commit_instr_type),
         .commit_dest_arch(rob_commit_dest_arch_reg),
@@ -445,29 +475,19 @@ module riscv_core_top (
     // SUPPORT MODULES
     // ========================================================================
     
-    hazard_detection hazard_inst (.clk(clk), .rst_n(rst_n),
-        .rs_full(alu_rs_full || mem_rs_full || mul_rs_full || div_rs_full || vec_rs_full),
-        .rob_full(rob_full), .lsq_full(lsq_full),
-        .free_list_empty(!free_list_valid),
-        .stall_fetch(stall_fetch), .stall_decode(stall_decode), .stall_dispatch(stall_dispatch));
-    
     main_controller controller_inst (.clk(clk), .rst_n(rst_n),
         .rs_full(alu_rs_full || mem_rs_full || mul_rs_full || div_rs_full || vec_rs_full),
         .rob_full(rob_full), .lsq_full(lsq_full),
-        .branch_mispredict(branch_mispredict), .branch_target_pc(branch_target),
+        .free_list_empty(!free_list_valid), // Wired from Free List
         .rob_flush_req(rob_flush_req), .rob_flush_pc(rob_flush_pc),
         .stall_fetch(stall_fetch), .stall_decode(stall_decode), .stall_dispatch(stall_dispatch),
         .flush_pipeline(flush_pipeline), .flush_target_pc(flush_target_pc_wire), .pipeline_mode());
     
     
     branch_predictor branch_pred_inst (.clk(clk), .rst_n(rst_n), .pc(fetch_pc),
-        .predicted_target(branch_target), .actual_target(32'h0),
-        .is_branch(decode_instr_type == `IBASE_BRANCH), .branch_taken(1'b0),
-        .branch_mispredict(branch_mispredict));
-    
-    exception_handler exc_handler (.clk(clk), .rst_n(rst_n), .ext_irq(ext_irq),
-        .illegal_instr(1'b0), .instr_misalign(1'b0), .load_misalign(1'b0), .store_misalign(1'b0),
-        .flush_pipeline(), .exception_code(exception_code), .exception_valid(exception_valid));
+        .predicted_branch(fetch_predicted_branch), .predicted_target(fetch_predicted_target), 
+        .resolved_pc(branch_update_pc), .resolved_target(branch_update_target),
+        .branch_taken(branch_update_taken), .branch_update_en(branch_update_req));
     
     // Vector operand extension (since RS is 32-bit but VEU is 128-bit)
     assign vec_op1[VLEN-1:XLEN] = '0;

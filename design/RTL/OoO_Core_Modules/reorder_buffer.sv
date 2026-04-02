@@ -40,7 +40,12 @@ module reorder_buffer #(
     input [5:0] vec_result1_tag,
     input vec_result1_valid,
     
-    // Disambiguation Violation (from LSQ)
+    // Branch Mispredictions Flush Request (from execute_stage)
+    input alu_flush_req,
+    input [5:0] alu_flush_tag,
+    input [XLEN-1:0] alu_flush_target,
+    
+    // LSQ Memory Violation Flush Request (from LSQ on Disambiguation)
     input lsq_violation_req,
     input [5:0] lsq_violation_tag,
         
@@ -64,7 +69,8 @@ module reorder_buffer #(
         logic [5:0] phys_reg; // For matching CDB result to ROB entry and for updating RAT on commit
         logic [5:0] old_phys_reg; // For freeing old phys reg on commit
         logic [31:0] vtype;       // For updating architectural vtype
-        logic memory_violation; // Set if LSQ detects out-of-order memory conflict
+        logic flush_flag; // Set if instruction mispredicted or caused a memory violation
+        logic [XLEN-1:0] flush_target_pc; // The correct PC to resume execution from
         logic result_ready; // signals instruction is ready to commit (stores/branches are ready immediately)
         logic valid; // signals this entry is allocated and valid
     } rob_entry_t;
@@ -90,7 +96,8 @@ module reorder_buffer #(
                 rob_entries[i].phys_reg <= 6'b0;
                 rob_entries[i].old_phys_reg <= 6'b0;
                 rob_entries[i].vtype <= 32'b0;
-                rob_entries[i].memory_violation <= 1'b0;
+                rob_entries[i].flush_flag <= 1'b0;
+                rob_entries[i].flush_target_pc <= {XLEN{1'b0}};
                 rob_entries[i].result_ready <= 1'b0;
             end
             head_ptr <= 0;
@@ -106,7 +113,8 @@ module reorder_buffer #(
                 rob_entries[tail_ptr].old_phys_reg <= alloc_old_phys_reg;
                 rob_entries[tail_ptr].vtype <= alloc_vtype;
                 rob_entries[tail_ptr].result_ready <= 1'b0;
-                rob_entries[tail_ptr].memory_violation <= 1'b0;
+                rob_entries[tail_ptr].flush_flag <= 1'b0;
+                rob_entries[tail_ptr].flush_target_pc <= {XLEN{1'b0}};
                 rob_entries[tail_ptr].valid <= 1'b1;
                 tail_ptr <= next_tail;
             end        
@@ -131,11 +139,20 @@ module reorder_buffer #(
                 end
             end
             
-            // 3. Memory Violation Flagging
+            // 3. Delayed Flush Flagging (Branch Mispredictions & LSQ Violations)
+            if (alu_flush_req) begin
+                for (int i = 0; i < ROB_SIZE; i++) begin
+                    if (rob_entries[i].valid && (rob_entries[i].phys_reg == alu_flush_tag)) begin
+                        rob_entries[i].flush_flag <= 1'b1;
+                        rob_entries[i].flush_target_pc <= alu_flush_target; // The branch resolved_target
+                    end
+                end
+            end
             if (lsq_violation_req) begin
                 for (int i = 0; i < ROB_SIZE; i++) begin
                     if (rob_entries[i].valid && (rob_entries[i].phys_reg == lsq_violation_tag)) begin
-                        rob_entries[i].memory_violation <= 1'b1;
+                        rob_entries[i].flush_flag <= 1'b1;
+                        rob_entries[i].flush_target_pc <= rob_entries[i].pc; // Replay load at its original PC
                     end
                 end
             end
@@ -153,10 +170,10 @@ module reorder_buffer #(
     // ========================================================================
 
     logic head_is_violator;
-    assign head_is_violator = rob_entries[head_ptr].valid && rob_entries[head_ptr].memory_violation;
+    assign head_is_violator = rob_entries[head_ptr].valid && rob_entries[head_ptr].flush_flag;
     
     assign rob_flush_req = head_is_violator;
-    assign rob_flush_pc = rob_entries[head_ptr].pc;
+    assign rob_flush_pc = rob_entries[head_ptr].flush_target_pc;
     
     // Only check ROB's head pointer, as it is the oldest instruction
     assign commit_valid = rob_entries[head_ptr].valid && rob_entries[head_ptr].result_ready && !head_is_violator;

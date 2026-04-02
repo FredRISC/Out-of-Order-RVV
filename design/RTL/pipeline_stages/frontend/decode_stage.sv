@@ -18,12 +18,16 @@ module decode_stage #(
     // From fetch stage
     input [INST_WIDTH-1:0] instr_in,
     input [XLEN-1:0] pc_in,
+    input predicted_branch_in, // Tunnel from Fetch
+    input [XLEN-1:0] predicted_target_in, // Tunnel from Fetch
     input valid_in,
     
     // Output fields
     output reg [3:0] instr_type_out,    // Key output of this stage: instruction type for routing to appropriate reservation station
     output reg [XLEN-1:0] pc_out,   // Pass through PC for potential use in branch target calculation or debugging
     output reg [INST_WIDTH-1:0] instr_out, // Pass through instruction for debugging
+    output reg predicted_branch_out,
+    output reg [XLEN-1:0] predicted_target_out,
     output reg valid_out    // Indicate that the output of this stage is valid
 );
 
@@ -45,7 +49,10 @@ module decode_stage #(
             pc_out <= pc_in; // Pass through PC for potential use in branch target calculation or debugging
             instr_out <= instr_in;  // Pass through instruction for debugging
             valid_out <= 1'b1;  // Indicate that the output of this stage is valid
-            
+
+            predicted_branch_out <= predicted_branch_in;
+            predicted_target_out <= predicted_target_in; // tunnel to next stage
+
             // Decode instruction type from opcode
             case (opcode)
                 7'b0110011: begin  // DO HERE

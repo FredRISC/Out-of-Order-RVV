@@ -19,3 +19,9 @@ If an industry LSQ hits a Page Fault on the 3rd element of a vector load, it hal
 
 ### 6. LSQ Disambiguation Memory (CAMs)
 Our LSQ uses standard-cell combinational for-loops to check address overlaps (WAR/RAW/WAW hazards). In physical design, this creates a massive critical path. A production core splits the LSQ into a Load Queue and Store Buffer, utilizing custom Content Addressable Memory (CAM) arrays for 1-cycle associative lookups.
+
+### 7. Frontend Redirects (Early Branch Resolution)
+Currently, all jumps (`JAL`/`JALR`) traverse the entire pipeline and rely on the ROB for state recovery. Industry cores feature an Early Branch Resolution Unit in the Decode stage to instantly compute unconditional targets and flush only the Fetch stage, saving cycles on BTB misses.
+
+### 8. RAT Checkpointing (Snapshots)
+Currently, branch misprediction recovery waits until the branch reaches the head of the ROB to copy the Arch RAT back to the Spec RAT. Aggressive cores take a physical hardware snapshot of the Spec RAT upon dispatching a branch, allowing instant recovery the moment the Execute stage detects a misprediction.

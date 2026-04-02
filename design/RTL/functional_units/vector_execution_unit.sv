@@ -23,7 +23,7 @@ module vector_execution_unit #(
     // Operand interface
     input [VLEN-1:0] vec_src1,
     input [VLEN-1:0] vec_src2,
-    input [3:0] vec_op,
+    input [4:0] vec_op,
     input vec_valid,
     
     // Result interface

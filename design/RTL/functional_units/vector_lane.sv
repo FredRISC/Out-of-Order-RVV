@@ -13,7 +13,7 @@ module vector_lane #(
     
     input [ELEN-1:0] operand1,
     input [ELEN-1:0] operand2,
-    input [3:0] vec_op,
+    input [4:0] vec_op,
     input valid_in,
     
     output reg [ELEN-1:0] result,

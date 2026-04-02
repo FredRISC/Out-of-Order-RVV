@@ -14,6 +14,8 @@ module fetch_stage #(
     input stall,
     input flush,
     input [XLEN-1:0] flush_pc,
+    input predicted_branch_in, // From branch predictor
+    input [XLEN-1:0] predicted_target_in,
     
     output reg [XLEN-1:0] pc_out,
     output reg [INST_WIDTH-1:0] instr_out,
@@ -35,15 +37,18 @@ module fetch_stage #(
             // On flush, update PC to requested target and invalidate output.
             // This will cause the target instruction to be fetched in the next cycle.
             pc_current <= flush_pc;
-            valid_out <= 1'b0;
+            valid_out <= 1'b1;
         end else if (!stall && imem_valid) begin
             // Fetch new instruction if not stalled and instruction memory is valid
             instr_out <= imem_data;
             pc_out <= pc_current;
             valid_out <= 1'b1;
-            pc_current <= pc_current + 32'h4;
-        end else begin
-            valid_out <= 1'b0;
+            
+            // Use predictor to determine next PC
+            if (predicted_branch_in)
+                pc_current <= predicted_target_in;
+            else
+                pc_current <= pc_current + 32'h4;
         end
     end
     

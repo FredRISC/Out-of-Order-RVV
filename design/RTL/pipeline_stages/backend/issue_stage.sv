@@ -40,9 +40,11 @@ module issue_stage #(
     input [XLEN-1:0] dispatch_imm,
     input [XLEN-1:0] dispatch_vtype,
     input [XLEN-1:0] dispatch_pc,
-    input [3:0] dispatch_alu_op,
+    input [4:0] dispatch_alu_op,
     input dispatch_src1_is_vec,
     input dispatch_src2_is_vec,
+    input dispatch_predicted_branch,
+    input [XLEN-1:0] dispatch_predicted_target,
     input [RS_TAG_WIDTH-1:0] dispatch_dest_tag,
     input [LSQ_TAG_WIDTH-1:0] dispatch_lsq_tag,
     
@@ -87,7 +89,9 @@ module issue_stage #(
     output [RS_TAG_WIDTH-1:0] alu_issue_dest_tag,
     output [XLEN-1:0] alu_issue_imm,
     output [XLEN-1:0] alu_issue_pc,
-    output [3:0] alu_issue_op,
+    output alu_issue_predicted_branch,
+    output [XLEN-1:0] alu_issue_predicted_target,
+    output [4:0] alu_issue_op,
     
     // MEM
     output mem_issue_valid,
@@ -99,7 +103,7 @@ module issue_stage #(
     output [RS_TAG_WIDTH-1:0] mem_issue_dest_tag,
     output [XLEN-1:0] mem_issue_imm,
     output [RS_TAG_WIDTH-1:0] mem_issue_vl_tag,
-    output [3:0] mem_issue_op,
+    output [4:0] mem_issue_op,
     output [LSQ_TAG_WIDTH-1:0] mem_issue_lsq_tag,
     
     // MUL
@@ -107,14 +111,14 @@ module issue_stage #(
     output [RS_TAG_WIDTH-1:0] mul_issue_src1_tag,
     output [RS_TAG_WIDTH-1:0] mul_issue_src2_tag,
     output [RS_TAG_WIDTH-1:0] mul_issue_dest_tag,
-    output [3:0] mul_issue_op,
+    output [4:0] mul_issue_op,
     
     // DIV
     output div_issue_valid,
     output [RS_TAG_WIDTH-1:0] div_issue_src1_tag,
     output [RS_TAG_WIDTH-1:0] div_issue_src2_tag,
     output [RS_TAG_WIDTH-1:0] div_issue_dest_tag,
-    output [3:0] div_issue_op,
+    output [4:0] div_issue_op,
     
     // VEC
     output vec_issue_valid,
@@ -122,7 +126,7 @@ module issue_stage #(
     output [RS_TAG_WIDTH-1:0] vec_issue_src2_tag,
     output [RS_TAG_WIDTH-1:0] vec_issue_dest_tag,
     output vec_issue_use_vl,
-    output [3:0] vec_issue_op
+    output [4:0] vec_issue_op,
     output [RS_TAG_WIDTH-1:0] vec_issue_vl_tag,
     output [XLEN-1:0] vec_issue_vtype
 );
@@ -143,6 +147,7 @@ module issue_stage #(
         .vl_tag_in(dispatch_vl_tag), .vl_valid_in(dispatch_vl_valid), .use_vl_in(dispatch_use_vl),
         .src1_is_vec_in(1'b0), .src2_is_vec_in(1'b0), // ALU uses scalar
         .imm_data(dispatch_imm), .vtype_data(dispatch_vtype), .pc_data(dispatch_pc), .alu_op(dispatch_alu_op),
+        .predicted_branch_in(dispatch_predicted_branch), .predicted_target_in(dispatch_predicted_target),
         .dispatch_valid(dispatch_valid && (dispatch_rs_type == `RS_TYPE_ALU)),
         .dest_tag_in(dispatch_dest_tag), .lsq_tag_in({LSQ_TAG_WIDTH{1'b0}}),
         .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
@@ -150,7 +155,9 @@ module issue_stage #(
         .issue_req(req_alu), .issue_grant(grant_alu),
         .issue_src1_tag(alu_issue_src1_tag), .issue_src2_tag(alu_issue_src2_tag),
         .issue_use_rs1(alu_issue_use_rs1), .issue_use_rs2(alu_issue_use_rs2), .issue_use_pc(alu_issue_use_pc),
-        .issue_imm(alu_issue_imm), .issue_pc(alu_issue_pc), .execute_op(alu_issue_op), 
+        .issue_imm(alu_issue_imm), .issue_pc(alu_issue_pc), 
+        .issue_predicted_branch(alu_issue_predicted_branch), .issue_predicted_target(alu_issue_predicted_target),
+        .execute_op(alu_issue_op), 
         .execute_valid(alu_issue_valid), .rs_full(alu_rs_full), .assigned_tag(alu_issue_dest_tag)
     );
 
