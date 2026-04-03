@@ -23,86 +23,86 @@ module divider #(
     output reg valid_out
 );
 
-    reg [2*XLEN:0] working_register [DIV_LATENCY-1:0];
+    // Pipeline stages
+    reg [XLEN-1:0] q_pipe [DIV_LATENCY-1:0];
+    reg [XLEN-1:0] r_pipe [DIV_LATENCY-1:0];
     reg stage_valid [DIV_LATENCY-1:0];
     reg [1:0] div_type_pipe [DIV_LATENCY-1:0];
     
     wire is_signed = ~div_type[0];
-    wire return_rem = div_type[1];
     
-    // Handle sign for signed division
-    logic [XLEN-1:0] dividend_abs, divisor_abs;
-    logic sign_dividend, sign_divisor;
+    // Combinational math for Stage 0 (RISC-V Compliant)
+    logic [XLEN-1:0] q_comb, r_comb;
     
+    // Behavioral modeling of division with RISC-V specified edge cases handled
+    // Replace this with real divider IP. This is just for functional correctness in the prototype.
     always @(*) begin
-        if (is_signed) begin
-            sign_dividend = dividend[XLEN-1];
-            sign_divisor = divisor[XLEN-1];
-            dividend_abs = sign_dividend ? -dividend : dividend;
-            divisor_abs = sign_divisor ? -divisor : divisor;
+        q_comb = 32'b0;
+        r_comb = 32'b0;
+        
+        if (divisor == 32'h0) begin
+            // RISC-V Spec: Divide by zero
+            q_comb = 32'hFFFFFFFF; // -1
+            r_comb = dividend;     // remainder = dividend
+        end else if (is_signed && dividend == 32'h80000000 && divisor == 32'hFFFFFFFF) begin
+            // RISC-V Spec: Signed Overflow (-2^31 / -1); maximum negative number divided by -1
+            q_comb = 32'h80000000;
+            r_comb = 32'h0;
         end else begin
-            sign_dividend = 1'b0;
-            sign_divisor = 1'b0;
-            dividend_abs = dividend;
-            divisor_abs = divisor;
+            // Normal Division
+            if (is_signed) begin
+                q_comb = $signed(dividend) / $signed(divisor);
+                r_comb = $signed(dividend) % $signed(divisor);
+            end else begin
+                q_comb = dividend / divisor;
+                r_comb = dividend % divisor;
+            end
         end
     end
     
-    // Non-restoring division pipeline
+    // Behavioral Pipeline Delay
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int i = 0; i < DIV_LATENCY; i++) begin
-                working_register[i] <= 0;
+                q_pipe[i] <= 0;
+                r_pipe[i] <= 0;
                 stage_valid[i] <= 1'b0;
                 div_type_pipe[i] <= 2'b0;
             end
         end else begin
-            // Stage 0: Initialize with dividend and divisor setup
+            // Stage 0: Latch the combinational result
             if (valid_in) begin
-                working_register[0] <= {{(XLEN+1){1'b0}}, dividend_abs};
+                q_pipe[0] <= q_comb;
+                r_pipe[0] <= r_comb;
                 stage_valid[0] <= 1'b1;
                 div_type_pipe[0] <= div_type;
             end else begin
                 stage_valid[0] <= 1'b0;
             end
             
-            // Pipeline stages: Perform digit recurrence (simplified)
-            // Real implementation would include radix-4 digit selection logic
+            // Pipeline stages 1 to N: Shift forward
             for (int i = 1; i < DIV_LATENCY; i++) begin
-                working_register[i] <= working_register[i-1];
+                q_pipe[i] <= q_pipe[i-1];
+                r_pipe[i] <= r_pipe[i-1];
                 stage_valid[i] <= stage_valid[i-1];
                 div_type_pipe[i] <= div_type_pipe[i-1];
             end
         end
     end
     
-    // Result computation
+    // Output Routing (Mux the quotient or remainder based on requested instruction)
     always @(*) begin
-        logic [XLEN-1:0] q, r;
-        
-        // Extract quotient and remainder from final working register
-        q = working_register[DIV_LATENCY-1][XLEN-1:0];
-        r = working_register[DIV_LATENCY-1][2*XLEN:XLEN];
-        
-        // Correct signs for signed division
-        if (is_signed && (sign_dividend ^ sign_divisor)) begin
-            quotient = -q;
-        end else begin
-            quotient = q;
-        end
-        
-        if (is_signed && sign_dividend) begin
-            remainder = -r;
-        end else begin
-            remainder = r;
-        end
-        
-        // For REM/REMU, swap quotient and remainder
-        if (return_rem) begin
-            quotient = remainder;
-        end
-        
         valid_out = stage_valid[DIV_LATENCY-1];
+        
+        if (div_type_pipe[DIV_LATENCY-1][1]) begin 
+            // bit 1 is high for REM / REMU
+            quotient = r_pipe[DIV_LATENCY-1];
+            remainder = r_pipe[DIV_LATENCY-1];
+        end else begin
+            // bit 1 is low for DIV / DIVU
+            quotient = q_pipe[DIV_LATENCY-1];
+            remainder = r_pipe[DIV_LATENCY-1];
+        end
     end
 
 endmodule

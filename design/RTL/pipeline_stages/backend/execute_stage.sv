@@ -44,10 +44,12 @@ module execute_stage #(
     input [LSQ_TAG_WIDTH-1:0] mem_lsq_tag, // LSQ Entry Tag
     
     input [XLEN-1:0] mul_op1, mul_op2,
+    input [4:0] mul_operation,
     input mul_valid,
     input [5:0] mul_tag,
     
     input [XLEN-1:0] div_op1, div_op2,
+    input [4:0] div_operation,
     input div_valid,
     input [5:0] div_tag,
     
@@ -192,7 +194,7 @@ module execute_stage #(
                 .multiplicand(mul_op1),
                 .multiplier(mul_op2),
                 .valid_in(mul_valid),
-                .mul_type(2'b00),
+                .mul_type(mul_operation[1:0]),
                 .product_low(mul_results[i]),
                 .product_high(),
                 .valid_out(mul_valids[i])
@@ -220,7 +222,7 @@ module execute_stage #(
                 .dividend(div_op1),
                 .divisor(div_op2),
                 .valid_in(div_valid),
-                .div_type(2'b00),
+                .div_type(div_operation[1:0]),
                 .quotient(div_results[i]),
                 .remainder(),
                 .valid_out(div_valids[i])
@@ -465,15 +467,21 @@ module execute_stage #(
             if (is_jal || is_jalr) cdb0_result = alu_pc + 4;
             else cdb0_result = alu_result_selected;
             cdb0_tag = alu_tag_selected;
-        end else if (mul_result_valid) begin
+        end 
+        else if (mul_result_valid) begin
             cdb0_valid = 1'b1;
             cdb0_result = mul_result_selected;
             cdb0_tag = mul_tag_selected;
         end
+        else if (div_result_valid) begin
+            cdb0_valid = 1'b1;
+            cdb0_result = div_result_selected;
+            cdb0_tag = div_tag_selected;
+        end
     end
 
     // ========================================================================
-    // CDB 1: Unscheduled Bus (LSQ, DIV, VEU)
+    // CDB 1: Unscheduled Bus (LSQ)
     // These operate outside the scheduler. LSQ gets priority.
     // (Known edge case: DIV drops data if LSQ hits on the same exact cycle).
     // ========================================================================
@@ -486,15 +494,11 @@ module execute_stage #(
             cdb1_valid = 1'b1;
             cdb1_result = lsu_scalar_result;
             cdb1_tag = lsu_tag_extended; 
-        end else if (div_result_valid) begin
-            cdb1_valid = 1'b1;
-            cdb1_result = div_result_selected;
-            cdb1_tag = div_tag_selected;
-        end
+        end 
     end
 
     // ========================================================================
-    // Dedicated Vector CDBs
+    // Dedicated Vector CDBs (0th for VEU, 1st for LSQ Vector Results)
     // ========================================================================
     always @(*) begin
         vec_cdb0_valid = vec_result_valid;

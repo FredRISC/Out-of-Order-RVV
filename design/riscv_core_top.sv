@@ -77,7 +77,7 @@ module riscv_core_top (
     
     // RS signals (5 types)
     logic alu_rs_full, mem_rs_full, mul_rs_full, div_rs_full, vec_rs_full;
-    logic [4:0] alu_operation, mem_operation, vec_operation;
+    logic [4:0] alu_operation, mem_operation, vec_operation, mul_operation, div_operation;
     logic alu_valid, mem_valid, mul_valid, div_valid, vec_valid;
     logic [LSQ_TAG_WIDTH-1:0] mem_lsq_tag; // To Execute
     
@@ -385,7 +385,7 @@ module riscv_core_top (
         .vec_vl_exec(vec_vl_exec), .vec_vtype_exec(vec_vtype_exec),
         .alu_tag_exec(alu_tag), .mem_tag_exec(mem_tag), .mul_tag_exec(mul_tag), .div_tag_exec(div_tag), .vec_tag_exec(vec_tag),
         .alu_op_exec(alu_operation), .mem_op_exec(mem_operation), .vec_op_exec(vec_operation),
-        .mem_lsq_tag_exec(mem_lsq_tag)
+        .mul_op_exec(mul_operation), .div_op_exec(div_operation), .mem_lsq_tag_exec(mem_lsq_tag)
     );
 
     // ========================================================================
@@ -408,8 +408,8 @@ module riscv_core_top (
         .alu_valid(alu_valid), .alu_tag(alu_tag),
         .mem_op1(mem_op1), .mem_op2(mem_op2), .mem_imm(mem_imm_exec), .mem_vl(mem_vl_exec), .mem_operation(mem_operation),
         .mem_valid(mem_valid), .mem_tag(mem_tag), .mem_lsq_tag(mem_lsq_tag),
-        .mul_op1(mul_op1), .mul_op2(mul_op2), .mul_valid(mul_valid), .mul_tag(mul_tag),
-        .div_op1(div_op1), .div_op2(div_op2), .div_valid(div_valid), .div_tag(div_tag),
+        .mul_op1(mul_op1), .mul_op2(mul_op2), .mul_operation(mul_operation), .mul_valid(mul_valid), .mul_tag(mul_tag),
+        .div_op1(div_op1), .div_op2(div_op2), .div_operation(div_operation), .div_valid(div_valid), .div_tag(div_tag),
         .vec_op1(vec_op1), .vec_op2(vec_op2), .vec_operation(vec_operation),
         .vec_valid(vec_valid), .vec_tag(vec_tag),
         .vec_vl(vec_vl_exec), .vec_vtype(vec_vtype_exec),

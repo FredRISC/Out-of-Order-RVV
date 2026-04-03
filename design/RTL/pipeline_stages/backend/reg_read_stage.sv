@@ -102,7 +102,7 @@ module reg_read_stage #(
     output logic [31:0] vec_vtype_exec,
     
     output logic [RS_TAG_WIDTH-1:0] alu_tag_exec, mem_tag_exec, mul_tag_exec, div_tag_exec, vec_tag_exec,
-    output logic [4:0] alu_op_exec, mem_op_exec, vec_op_exec,
+    output logic [4:0] alu_op_exec, mem_op_exec, vec_op_exec, mul_op_exec, div_op_exec,
     output logic [LSQ_TAG_WIDTH-1:0] mem_lsq_tag_exec
 );
 
@@ -259,6 +259,7 @@ module reg_read_stage #(
                 mul_op1_exec <= mul_src1_bypassed;
                 mul_op2_exec <= mul_src2_bypassed;
                 mul_tag_exec <= mul_issue_dest_tag;
+                mul_op_exec  <= mul_issue_op;
             end
             
             // DIV Flop
@@ -267,6 +268,7 @@ module reg_read_stage #(
                 div_op1_exec <= div_src1_bypassed;
                 div_op2_exec <= div_src2_bypassed;
                 div_tag_exec <= div_issue_dest_tag;
+                div_op_exec  <= div_issue_op;
             end
             
             // VEC Flop

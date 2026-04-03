@@ -22,6 +22,8 @@ module multiplier #(
     output reg [XLEN-1:0] product_high,
     output reg valid_out
 );
+    // Behavioral modeling of multiplication
+    // Replace this with real multiplier IP. This is just for functional correctness in the prototype.
 
     // Pipeline stages for partial product accumulation
     reg [63:0] pp_accum [MUL_LATENCY-1:0];
@@ -60,7 +62,7 @@ module multiplier #(
             // Stage 0: Initial partial products
             if (valid_in) begin
                 // Simplified: Use full multiplication (can be optimized with Booth)
-                pp_accum[0] <= mcand_extended * mplier_extended;
+                pp_accum[0] <= $signed(mcand_extended) * $signed(mplier_extended);
                 stage_valid[0] <= 1'b1;
                 mul_type_pipe[0] <= mul_type;
             end else begin
