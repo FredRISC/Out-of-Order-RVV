@@ -5,28 +5,25 @@
 
 `include "../riscv_header.sv"
 
-module fetch_stage #(
-    parameter XLEN = 32,
-    parameter INST_WIDTH = 32
-) (
+module fetch_stage (
     input clk,
     input rst_n,
     input stall,
     input flush,
-    input [XLEN-1:0] flush_pc,
+    input [`XLEN-1:0] flush_pc,
     input predicted_branch_in, // From branch predictor
-    input [XLEN-1:0] predicted_target_in,
+    input [`XLEN-1:0] predicted_target_in,
     
-    output reg [XLEN-1:0] pc_out,
-    output reg [INST_WIDTH-1:0] instr_out,
+    output reg [`XLEN-1:0] pc_out,
+    output reg [`INST_WIDTH-1:0] instr_out,
     output reg valid_out,
     
-    output reg [XLEN-1:0] imem_addr,
-    input [INST_WIDTH-1:0] imem_data,
+    output reg [`XLEN-1:0] imem_addr,
+    input [`INST_WIDTH-1:0] imem_data,
     input imem_valid
 );
 
-    reg [XLEN-1:0] pc_current;
+    reg [`XLEN-1:0] pc_current;
     
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

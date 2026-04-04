@@ -7,29 +7,18 @@
 
 `include "../riscv_header.sv"
 
-module dispatch_stage #(
-    parameter XLEN = 32,
-    parameter INST_WIDTH = 32,
-    parameter NUM_INT_REGS = 32,
-    parameter NUM_PHYS_REGS = 64,
-    parameter ALU_RS_SIZE = 8,
-    parameter MEM_RS_SIZE = 8,
-    parameter MUL_RS_SIZE = 4,
-    parameter DIV_RS_SIZE = 4,
-    parameter VEC_RS_SIZE = 8,
-    parameter LSQ_TAG_WIDTH = 3
-) (
+module dispatch_stage (
     input clk,
     input rst_n,
     input stall,
     input flush,
     
     // From decode stage
-    input [INST_WIDTH-1:0] instr_in,
+    input [`INST_WIDTH-1:0] instr_in,
     input [3:0] instr_type,
-    input [XLEN-1:0] pc_in,
+    input [`XLEN-1:0] pc_in,
     input predicted_branch_in,
-    input [XLEN-1:0] predicted_target_in,
+    input [`XLEN-1:0] predicted_target_in,
     input valid_in,
 
     // Essentially the dispatch_stage initialization signal
@@ -47,17 +36,17 @@ module dispatch_stage #(
     output rob_alloc_valid, // Request for ROB allocation 
     output [5:0] phys_rd, // To RS/ROB for CDB tag matching (= free_phys_reg)
     output [4:0] dest_reg, // MUXed Architectural destination register; sent to ROB for commit_stage
-    output phys_rd_old, // Old RAT mapping of the rd register to be freed; sent to ROB on allocation
+    output logic [5:0] phys_rd_old, // Old RAT mapping of the rd register to be freed; sent to ROB on allocation
 
     // Physical Register File Interface (Operands Ready?)
     // input PReg_src1_valid_in, PReg_src2_valid_in,      // Physical register valid bits
     
     // Reservation Station Interface
     output rs_alloc_valid, // Requst for RS allocation
-    output [3:0] rs_type,  // Which RS to use (ALU, MEM, MUL, DIV, VEC)
+    output logic [3:0] rs_type,  // Which RS to use (ALU, MEM, MUL, DIV, VEC)
     output logic [4:0] alu_op, // Encoded Control signals for ALU
-    output [XLEN-1:0] imm_out,
-    output [XLEN-1:0] pc_out,
+    output [`XLEN-1:0] imm_out,
+    output [`XLEN-1:0] pc_out,
     output use_rs1_out,
     output use_rs2_out,
     output use_pc_out,
@@ -65,7 +54,7 @@ module dispatch_stage #(
     output dispatch_src1_is_vec,
     output dispatch_src2_is_vec,
     output dispatch_predicted_branch, // tunnel to issue_stage
-    output [XLEN-1:0] dispatch_predicted_target, // tunnel to issue_stage
+    output [`XLEN-1:0] dispatch_predicted_target, // tunnel to issue_stage
     
     // Vector CSR Interface
     input [31:0] spec_vtype, // Only read from CSR
@@ -75,8 +64,8 @@ module dispatch_stage #(
 
 
     // LSQ Alloc Interface 
-    input [LSQ_TAG_WIDTH-1:0] lsq_alloc_tag_in, // Tag from LSQ
-    output [LSQ_TAG_WIDTH-1:0] dispatch_lsq_tag, // Tag to RS
+    input [`LSQ_TAG_WIDTH-1:0] lsq_alloc_tag_in, // Tag from LSQ
+    output [`LSQ_TAG_WIDTH-1:0] dispatch_lsq_tag, // Tag to RS
     output lsq_alloc_req, // Request for LSQ allocation
     output lsq_alloc_is_store, // Load or Store?
     output lsq_alloc_is_vector, // Is vector load/store?
@@ -109,7 +98,7 @@ module dispatch_stage #(
 
     logic [4:0] rs1_arch_internal, rs2_arch_internal, dst_arch_internal;
     // Sign-extend immediate
-    logic [XLEN-1:0] imm_extended;
+    logic [`XLEN-1:0] imm_extended;
 
 
     logic is_vec_arith = (instr_type == `V_EXT_VEC);
@@ -180,8 +169,7 @@ module dispatch_stage #(
     logic [5:0] vec_phys_rs1, vec_phys_rs2, vec_phys_rd_old;
 
     logic Scalar_Rename_en = !Use_Dummy_rd && (!is_vec_arith && !is_vec_load && !is_vec_store); // V.CONFIG like vsetvli is executed through scalar datapath
-    rat #(.NUM_INT_REGS(NUM_INT_REGS), .NUM_PHYS_REGS(NUM_PHYS_REGS))
-    scalar_rat_inst (
+    rat scalar_rat_inst (
         .clk(clk), .rst_n(rst_n), .flush(flush),
         .src1_arch(rs1_arch_internal), .src2_arch(rs2_arch_internal),
         .src1_phys(scalar_phys_rs1), .src2_phys(scalar_phys_rs2),

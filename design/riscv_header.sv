@@ -10,8 +10,8 @@
 // INSTRUCTION SET ARCHITECTURE (RISC-V RV32IM)
 // ============================================================================
 
-parameter XLEN = 32;              // Scalar register width
-parameter INST_WIDTH = 32;        // Instruction width
+`define XLEN 32              // Scalar register width
+`define INST_WIDTH 32        // Instruction width
 
 // Funct3 codes
 `define FUNCT3_ADD_SUB 3'b000
@@ -72,86 +72,100 @@ parameter INST_WIDTH = 32;        // Instruction width
 `define RS_TYPE_VEC  4'b1010
 
 // Instruction types (for routing in dispatch)
-parameter logic [3:0] `IBASE_ALU = 4'h0;       // ADD, SUB, AND, OR, XOR, SLL, SRL, SRA, SLT, SLTU
-parameter logic [3:0] `IBASE_ALU_IMM = 4'h1;  // ADDI, ANDI, ORI, XORI, SLLI, SRLI, SRAI
-parameter logic [3:0] `IBASE_LOAD = 4'h2;     // LW, LH, LB, LBU, LHU
-parameter logic [3:0] `IBASE_STORE = 4'h3;    // SW, SH, SB
-parameter logic [3:0] `IBASE_BRANCH = 4'h4;   // BEQ, BNE, BLT, BGE, BLTU, BGEU
-parameter logic [3:0] `IBASE_JAL = 4'h5;      // JAL
-parameter logic [3:0] `IBASE_JALR = 4'hC;     // JALR
-parameter logic [3:0] `IBASE_LUI = 4'h6;      // LUI
-parameter logic [3:0] `IBASE_AUIPC = 4'hD;    // AUIPC
-parameter logic [3:0] `M_EXT_MUL = 4'h7;      // MUL, MULH, MULHSU, MULHU (RV32M)
-parameter logic [3:0] `M_EXT_DIV = 4'h8;      // DIV, DIVU, REM, REMU (RV32M)
-parameter logic [3:0] `V_EXT_VEC = 4'h9;      // VADD, VMUL, etc (RVV)
-parameter logic [3:0] `V_EXT_LOAD = 4'hA; // Vector Load
-parameter logic [3:0] `V_EXT_STORE = 4'hB;// Vector Store
-parameter logic [3:0] `V_EXT_CONFIG = 4'hE; // VSETVLI
-parameter logic [3:0] `IBASE_UNKNOWN = 4'hF;  // Unknown instruction
+`define IBASE_ALU  4'h0       // ADD, SUB, AND, OR, XOR, SLL, SRL, SRA, SLT, SLTU
+`define IBASE_ALU_IMM  4'h1  // ADDI, ANDI, ORI, XORI, SLLI, SRLI, SRAI
+`define IBASE_LOAD  4'h2     // LW, LH, LB, LBU, LHU
+`define IBASE_STORE  4'h3    // SW, SH, SB
+`define IBASE_BRANCH  4'h4   // BEQ, BNE, BLT, BGE, BLTU, BGEU
+`define IBASE_JAL  4'h5      // JAL
+`define IBASE_JALR  4'hC     // JALR
+`define IBASE_LUI  4'h6      // LUI
+`define IBASE_AUIPC  4'hD    // AUIPC
+`define M_EXT_MUL  4'h7      // MUL, MULH, MULHSU, MULHU (RV32M)
+`define M_EXT_DIV  4'h8      // DIV, DIVU, REM, REMU (RV32M)
+`define V_EXT_VEC  4'h9      // VADD, VMUL, etc (RVV)
+`define V_EXT_LOAD  4'hA // Vector Load
+`define V_EXT_STORE  4'hB// Vector Store
+`define V_EXT_CONFIG  4'hE // VSETVLI
+`define IBASE_UNKNOWN  4'hF  // Unknown instruction
 
 // Exception codes
-parameter EXCEPTION_CODE_WIDTH = 4;
-parameter logic [EXCEPTION_CODE_WIDTH-1:0] `EXC_EXTERNAL_INT = 4'h0;
-parameter logic [EXCEPTION_CODE_WIDTH-1:0] `EXC_ILLEGAL_INSTR = 4'h2;
-parameter logic [EXCEPTION_CODE_WIDTH-1:0] `EXC_INSTR_MISALIGN = 4'h0;
-parameter logic [EXCEPTION_CODE_WIDTH-1:0] `EXC_LOAD_MISALIGN = 4'h4;
-parameter logic [EXCEPTION_CODE_WIDTH-1:0] `EXC_STORE_MISALIGN = 4'h6;
+`define EXCEPTION_CODE_WIDTH  4
+`define EXC_EXTERNAL_INT  4'h0
+`define EXC_ILLEGAL_INSTR  4'h2
+`define EXC_INSTR_MISALIGN  4'h0
+`define EXC_LOAD_MISALIGN  4'h4
+`define EXC_STORE_MISALIGN  4'h6
 
 // ============================================================================
 // REGISTER FILES
 // ============================================================================
 
 // Scalar registers
-parameter NUM_INT_REGS = 32;           // x0-x31 (architectural)
+`define NUM_INT_REGS  32           // x0-x31 (architectural)
 
 // Vector registers
-parameter NUM_VEC_REGS = 32;           // v0-v31 (architectural)
+`define NUM_VEC_REGS  32           // v0-v31 (architectural)
 
 // ============================================================================
 // PHYSICAL REGISTERS (RAT+PHYSICAL SPECIFIC)
 // ============================================================================
 
-parameter NUM_PHYS_REGS = 64;          // 64 physical registers total
+`define NUM_PHYS_REGS  64          // 64 physical registers total
                                         // 32 for arch (x0-x31)
                                         // 32 extra for speculation
 
-parameter PHYS_REG_TAG_WIDTH = 6;      // 6 bits to address 64 phys regs (0-63)
+`define PHYS_REG_TAG_WIDTH  6      // 6 bits to address 64 phys regs (0-63)
 
 // ============================================================================
 // PIPELINE STRUCTURE
 // ============================================================================
 
 // Reservation stations
-parameter ALU_RS_SIZE = 8;             // ALU reservation station entries
-parameter MEM_RS_SIZE = 8;             // Load/Store RS entries
-parameter MUL_RS_SIZE = 4;             // Multiplier RS entries
-parameter DIV_RS_SIZE = 4;             // Divider RS entries
-parameter VEC_RS_SIZE = 8;             // Vector RS entries
+`define ALU_RS_SIZE  8             // ALU reservation station entries
+`define MEM_RS_SIZE  8             // Load/Store RS entries
+`define MUL_RS_SIZE  4             // Multiplier RS entries
+`define DIV_RS_SIZE  4             // Divider RS entries
+`define VEC_RS_SIZE  8             // Vector RS entries
+`define RS_TAG_WIDTH 6             // Matches PHYS_REG_TAG_WIDTH for direct mapping
 
 // Reorder Buffer
-parameter ROB_SIZE = 16;               // Instruction window size
+`define ROB_SIZE  16               // Instruction window size
 
 // Load-Store Queue
-parameter LSQ_SIZE = 16;               // Unified Load/Store queue depth
-parameter LSQ_TAG_WIDTH = 4;           // log2(16)
+`define LSQ_SIZE  16               // Unified Load/Store queue depth
+`define LSQ_TAG_WIDTH 6            // log2(64)
 
-// ============================================================================
+//
+// NUMBER OF FUs
+//
+`define NUM_ALU_FUS 1
+`define NUM_MUL_FUS 1
+`define NUM_DIV_FUS 1
+
+// 
 // FUNCTIONAL UNIT LATENCIES (PIPELINED)
-// ============================================================================
+// 
+`define ALU_LATENCY  1             // ALU: 1 cycle
+`define MUL_LATENCY  4             // Multiplier: 4-cycle pipeline
+`define DIV_LATENCY  6             // Divider: 6-cycle pipeline
+`define MAX_LATENCY 10
 
-parameter MUL_LATENCY = 4;             // Multiplier: 4-cycle pipeline
-parameter DIV_LATENCY = 6;             // Divider: 6-cycle pipeline
+//
+// Branch Predictor Parameters
+//
+`define BHT_SIZE 256
 
 // ============================================================================
 // VECTOR EXTENSION (RVV)
 // ============================================================================
 
-parameter VLEN = 128;                  // Vector register width (bits)
-parameter MAX_LMUL = 1;                // Maximum LMUL supported
-parameter MAX_VLMAX = VLEN * MAX_LMUL/8;  // Absolute physical max elements (effective VLEN / MIN_SEW)
-parameter ELEN = 32;                   // Element width (bits)
-parameter NUM_VEC_LANES = 4;           // Number of parallel lanes
-parameter DLEN = ELEN * NUM_VEC_LANES; // Data path width for vector operations (bits)
+`define VLEN  128                  // Vector register width (bits)
+`define MAX_LMUL  1                // Maximum LMUL supported
+`define MAX_VLMAX  (`VLEN * `MAX_LMUL/8)  // Absolute physical max elements (effective VLEN / MIN_SEW)
+`define ELEN  32                   // Element width (bits)
+`define NUM_VEC_LANES  4           // Number of parallel lanes
+`define DLEN  (`ELEN * `NUM_VEC_LANES) // Data path width for vector operations (bits)
 
 // ----------------------------------------------------------------------------
 // RVV MINIMAL SUBSET TARGET (Zve32x - Stripped Down)
@@ -169,8 +183,8 @@ parameter DLEN = ELEN * NUM_VEC_LANES; // Data path width for vector operations 
 // CDB (COMMON DATA BUS)
 // ============================================================================
 
-parameter CDB_TAG_WIDTH = 6;           // Matches PHYS_REG_TAG_WIDTH in RAT+PHYSICAL
-parameter NUM_CDBS = 2;                // Dual CDB Architecture (Scheduled + Unscheduled)
+`define CDB_TAG_WIDTH 6           // Matches PHYS_REG_TAG_WIDTH in RAT+PHYSICAL
+`define NUM_CDBS 2                // Dual CDB Architecture (Scheduled + Unscheduled)
                                         // CDB broadcasts PHYSICAL register tags
 
 // ============================================================================
@@ -180,14 +194,14 @@ parameter NUM_CDBS = 2;                // Dual CDB Architecture (Scheduled + Uns
 // In RAT+PHYSICAL:
 // - Operands identified by PHYSICAL register tags (6 bits)
 // - CDB carries physical reg tags
-// - Forwarding logic matches phys reg tags
+// - F`define matches phys reg tags
 // - Results stored in physical_register_file (not ROB)
 
 // ============================================================================
 // DEBUG / SIMULATION
 // ============================================================================
 
-parameter SIMULATION = 1;              // Set 0 for synthesis
-parameter DEBUG_LEVEL = 1;             // Debug verbosity (0-3)
+`define SIMULATION 1              // Set 0 for synthesis
+`define DEBUG_LEVEL 1             // Debug verbosity (0-3)
 
 `endif // RISCV_HEADER_SV

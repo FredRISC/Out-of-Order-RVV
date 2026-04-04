@@ -6,11 +6,7 @@
 
 `include "../riscv_header.sv"
 
-module load_store_queue #(
-    parameter LSQ_SIZE = 16,
-    parameter XLEN = 32,
-    parameter DLEN = 128
-) (
+module load_store_queue (
     input clk,
     input rst_n,
     input flush,
@@ -22,13 +18,13 @@ module load_store_queue #(
     input [31:0] alloc_vtype, // vtype from dispatch
     input [2:0] alloc_size,
     input [5:0] dispatch_phys_tag, // Phys tag of the instruction to be sent to CDB
-    output logic [LSQ_TAG_WIDTH-1:0] alloc_tag, // queue entry's id sent to dispatch_stage for matching after addr calculation
+    output logic [`LSQ_TAG_WIDTH-1:0] alloc_tag, // queue entry's id sent to dispatch_stage for matching after addr calculation
     output lsq_full,
     
     // 2. Execution Interface (Out-of-Order Address Calculation)
-    input [XLEN-1:0] exe_addr,  // Calculated address
-    input [DLEN-1:0] exe_data,  // Store data (Expanded to DLEN)
-    input [LSQ_TAG_WIDTH-1:0] exe_lsq_tag, // Which entry to update? = earlier sent alloc_tag 
+    input [`XLEN-1:0] exe_addr,  // Calculated address
+    input [(`DLEN-1):0] exe_data,  // Store data (Expanded to `DLEN)
+    input [`LSQ_TAG_WIDTH-1:0] exe_lsq_tag, // Which entry to update? = earlier sent alloc_tag 
     input [31:0] exe_vl,        // Vector Length arriving from Execute
     input exe_is_strided,       //  Identifies a strided load
     input exe_load_valid,
@@ -36,12 +32,12 @@ module load_store_queue #(
     
     // 3. CDB 1 Interface
     // Scalar CDB Port (for scalar loads and all stores)
-    output logic [XLEN-1:0] lsq_data_out, // Data to CDB
+    output logic [`XLEN-1:0] lsq_data_out, // Data to CDB
     output logic [5:0] cdb_phys_tag_out, // PReg tag for CDB and ROB wakeup
     output logic lsq_out_valid, // Valid signal for CDB and ROB wakeup (stores also use this to wake up ROB)
     
     // Vector CDB Port (for vector loads)
-    output logic [DLEN-1:0] vec_lsq_data_out,
+    output logic [(`DLEN-1):0] vec_lsq_data_out,
     output logic [5:0] vec_cdb_phys_tag_out,
     output logic vec_lsq_out_valid,
 
@@ -50,14 +46,14 @@ module load_store_queue #(
     
     // 5. Dual Memory Interface
     // Read Port
-    output logic [XLEN-1:0] dmem_read_addr,
+    output logic [`XLEN-1:0] dmem_read_addr,
     output logic dmem_read_en,
-    input [XLEN-1:0] dmem_read_data,
+    input [`XLEN-1:0] dmem_read_data,
     input dmem_read_valid,
     
     // Write Port
-    output logic [XLEN-1:0] dmem_write_addr,
-    output logic [XLEN-1:0] dmem_write_data,
+    output logic [`XLEN-1:0] dmem_write_addr,
+    output logic [`XLEN-1:0] dmem_write_data,
     output logic dmem_write_en,
     input dmem_write_ready, // Handshake: memory is ready to accept the store
     output logic [3:0] dmem_be,
@@ -77,11 +73,11 @@ module load_store_queue #(
     typedef struct packed {
         logic is_store;
         logic is_vector;            // Tracks if this is a VLE/VSE
-        logic [XLEN-1:0] address;   // Target address for load/store
-        logic [DLEN-1:0] data;      // Data to store, or data loaded (128-bit)
+        logic [`XLEN-1:0] address;   // Target address for load/store
+        logic [(`DLEN-1):0] data;      // Data to store, or data loaded (128-bit)
         logic [31:0] vl;            // Vector Length (Number of elements)
         logic [31:0] vtype;         // Vector Type (Contains SEW)
-        logic [XLEN-1:0] stride;    // NEW: Byte stride between elements
+        logic [`XLEN-1:0] stride;    // NEW: Byte stride between elements
         logic [5:0] phys_tag; // Physical tag
         logic [2:0] mem_size; // Size and sign-extension behavior
         logic addr_valid;     // Is address ready?
@@ -92,10 +88,10 @@ module load_store_queue #(
         logic committed;   // Ready to retire/write to memory
     } lsq_entry_t;
     
-    lsq_entry_t lsq [LSQ_SIZE-1:0]; 
+    lsq_entry_t lsq [`LSQ_SIZE-1:0]; 
     
-    logic [LSQ_TAG_WIDTH-1:0] head, tail, commit_ptr;
-    logic [LSQ_TAG_WIDTH-1:0] next_tail;
+    logic [`LSQ_TAG_WIDTH-1:0] head, tail, commit_ptr;
+    logic [`LSQ_TAG_WIDTH-1:0] next_tail;
     
     assign next_tail = tail + 1;
     
@@ -108,7 +104,7 @@ module load_store_queue #(
     // ========================================================================
     // Data Formatting Function (Sign/Zero Extension based on offset)
     // ========================================================================
-    function logic [XLEN-1:0] format_data(input [XLEN-1:0] raw_data, input [2:0] size, input [1:0] offset);
+    function logic [`XLEN-1:0] format_data(input [`XLEN-1:0] raw_data, input [2:0] size, input [1:0] offset);
         logic [7:0] b;
         logic [15:0] h;
         begin
@@ -132,7 +128,7 @@ module load_store_queue #(
     // ========================================================================
     // Vector Memory Subsystem Helper Functions
     // ========================================================================
-    function logic [XLEN-1:0] get_end_addr(input [XLEN-1:0] start_addr, input is_vec, input [31:0] vl, input [31:0] vtype, input [2:0] size);
+    function logic [`XLEN-1:0] get_end_addr(input [`XLEN-1:0] start_addr, input is_vec, input [31:0] vl, input [31:0] vtype, input [2:0] size);
         logic [31:0] bytes_per_elem;
         begin
             if (is_vec) begin
@@ -156,11 +152,12 @@ module load_store_queue #(
     
     function logic [7:0] get_total_words(input [31:0] vl, input [31:0] vtype);
         // Re-using the logic from above, total words = ceil((vl * bytes_per_elem) / 4)
-        logic [XLEN-1:0] end_offset = get_end_addr(0, 1'b1, vl, vtype, 3'b000);
+        logic [`XLEN-1:0] end_offset;
+        end_offset = get_end_addr(0, 1'b1, vl, vtype, 3'b000);
         get_total_words = (end_offset >> 2) + 1; 
     endfunction
     
-    function logic [XLEN-1:0] get_stride(input [31:0] vtype);
+    function logic [`XLEN-1:0] get_stride(input [31:0] vtype);
         // Default unit-stride based on SEW
         begin
             case (vtype[5:3])
@@ -177,26 +174,29 @@ module load_store_queue #(
     // Load Request Selector (Scan from Head for Ready Loads) 
     // ========================================================================
     logic issue_load_ready;
-    logic [LSQ_TAG_WIDTH-1:0] issue_load_idx;
+    logic [`LSQ_TAG_WIDTH-1:0] issue_load_idx;
     logic issue_load_valid;
-    logic [LSQ_TAG_WIDTH-1:0] mem_inflight_idx;
+    logic [`LSQ_TAG_WIDTH-1:0] mem_inflight_idx;
     logic mem_inflight_valid;
-                
+    logic [`LSQ_TAG_WIDTH-1:0] ptr_load_select; 
+
     always @(*) begin
+        integer i;
         issue_load_valid = 1'b0;
         issue_load_idx = 0;
         dmem_read_addr = 0;
         dmem_read_en = 1'b0;
-        
+        ptr_load_select = 0;
+
         // Scan from Head (Oldest) to Tail
-        for (int i = 0; i < LSQ_SIZE; i++) begin
-            logic [LSQ_TAG_WIDTH-1:0] ptr = head + i[LSQ_TAG_WIDTH-1:0];
+        for (i = 0; i < `LSQ_SIZE; i++) begin
+            ptr_load_select = head + i[`LSQ_TAG_WIDTH-1:0];
 
             // A load is ready to issue (no memory load response pending and address/data ready)
-            assign issue_load_ready = lsq[ptr].valid && !lsq[ptr].is_store && lsq[ptr].addr_valid && 
-                !lsq[ptr].data_valid && !lsq[ptr].sent_to_mem && !mem_inflight_valid;
+            assign issue_load_ready = lsq[ptr_load_select].valid && !lsq[ptr_load_select].is_store && lsq[ptr_load_select].addr_valid && 
+                !lsq[ptr_load_select].data_valid && !lsq[ptr_load_select].sent_to_mem && !mem_inflight_valid;
             if (issue_load_ready) begin // prepare to issue it in the next cycle
-                issue_load_idx = ptr; // record the ptr for tracking
+                issue_load_idx = ptr_load_select; // record the ptr for tracking
                 issue_load_valid = 1'b1; // mark that we have a load to issue in the next cycle
                 break;
             end
@@ -209,22 +209,25 @@ module load_store_queue #(
     // Disambiguation & Forwarding Logic 
     // (Word accesses (LW/SW) must have addresses ending in 00 (byte offset 0). Halfwords must end in 0)
     // ========================================================================
-    logic [XLEN-1:0] forwarded_data;
+    logic [`XLEN-1:0] forwarded_data;
     logic forwarding_valid;
-    logic [XLEN-1:0] exe_end_addr;
-    logic [XLEN-1:0] ptr_end_addr;
-    
+    logic [`XLEN-1:0] exe_end_addr;
+    logic [`XLEN-1:0] ptr_end_addr;
+    logic [`LSQ_TAG_WIDTH-1:0] ptr;
+
     always @(*) begin
+        integer k;
         flush_pipeline = 1'b0;
         lsq_violation_tag = 6'b0;
         forwarding_valid = 1'b0;
         forwarded_data = 0;
-        
+        ptr = 0;
+
         if (exe_store_valid) begin // Check at the moment we receive the calculated st address from execute stage
             // 1. DISAMBIGUATION: Range Overlap Check
             exe_end_addr = get_end_addr(exe_addr, lsq[exe_lsq_tag].is_vector, exe_vl, lsq[exe_lsq_tag].vtype, lsq[exe_lsq_tag].mem_size);
-            for (int k = 1; k < LSQ_SIZE; k++) begin
-                logic [LSQ_TAG_WIDTH-1:0] ptr = exe_lsq_tag + k[LSQ_TAG_WIDTH-1:0]; //check younger load entries
+            for (k = 1; k < `LSQ_SIZE; k++) begin
+                ptr = exe_lsq_tag + k[`LSQ_TAG_WIDTH-1:0]; //check younger load entries
                 
                 // check younger loads that has already calculated its address
                 if (lsq[ptr].valid && !lsq[ptr].is_store && lsq[ptr].addr_valid) begin
@@ -240,8 +243,8 @@ module load_store_queue #(
         else if (exe_load_valid) begin // Check at the moment we receive the calculated ld address from execute stage
             // 2. FORWARDING AND RANGE CONFLICTS
             exe_end_addr = get_end_addr(exe_addr, lsq[exe_lsq_tag].is_vector, exe_vl, lsq[exe_lsq_tag].vtype, lsq[exe_lsq_tag].mem_size);
-            for (int k = 1; k < LSQ_SIZE; k++) begin
-                logic [LSQ_TAG_WIDTH-1:0] ptr = exe_lsq_tag - k[LSQ_TAG_WIDTH-1:0]; //check older entries
+            for (k = 1; k < `LSQ_SIZE; k++) begin               
+                ptr = exe_lsq_tag - k[`LSQ_TAG_WIDTH-1:0]; //check older entries
                 
                 // If it's an older store with valid address, check for Range Overlap
                 if (lsq[ptr].valid && lsq[ptr].is_store && lsq[ptr].addr_valid) begin
@@ -269,22 +272,25 @@ module load_store_queue #(
     // ========================================================================
     // State Updates (Allocation, Memory Return, Commit, Retirement)
     // ========================================================================
-    logic [LSQ_TAG_WIDTH-1:0] broadcast_idx;
+    logic [`LSQ_TAG_WIDTH-1:0] broadcast_idx;
     
     // Vector FSM Registers
     logic vec_load_active;
     logic [7:0] vec_load_word_idx;
-    logic [7:0] vec_load_total_words = get_total_words(lsq[issue_load_idx].vl, lsq[issue_load_idx].vtype);;
+    logic [7:0] vec_load_total_words;
+    assign vec_load_total_words = get_total_words(lsq[issue_load_idx].vl, lsq[issue_load_idx].vtype);
     logic vec_store_active;
     logic [7:0] vec_store_word_idx;
-    logic [7:0] vec_store_total_words = get_total_words(lsq[head].vl, lsq[head].vtype);
+    logic [7:0] vec_store_total_words;
+    assign vec_store_total_words = get_total_words(lsq[head].vl, lsq[head].vtype);
 
-    logic [XLEN-1:0] read_addr;
+    logic [`XLEN-1:0] read_addr;
     logic read_en;
 
     always @(posedge clk or negedge rst_n) begin
+        integer i;
         if (!rst_n || flush) begin
-            for (int i = 0; i < LSQ_SIZE; i++) begin
+            for (i = 0; i < `LSQ_SIZE; i++) begin
                 lsq[i].valid <= 1'b0;
             end
             head <= 0;
@@ -321,11 +327,11 @@ module load_store_queue #(
                 lsq[exe_lsq_tag].vl <= exe_vl;
                 
                 if (exe_is_strided) begin
-                    lsq[exe_lsq_tag].stride <= exe_data[XLEN-1:0]; // Dynamically update the stride!
+                    lsq[exe_lsq_tag].stride <= exe_data[`XLEN-1:0]; // Dynamically update the stride!
                 end
                 
                 if (forwarding_valid) begin
-                    lsq[exe_lsq_tag].data <= { {(DLEN-XLEN){1'b0}}, format_data(forwarded_data[XLEN-1:0], lsq[exe_lsq_tag].mem_size , exe_addr[1:0]) };
+                    lsq[exe_lsq_tag].data <= { {(`DLEN-`XLEN){1'b0}}, format_data(forwarded_data[`XLEN-1:0], lsq[exe_lsq_tag].mem_size , exe_addr[1:0]) };
                     lsq[exe_lsq_tag].data_valid <= 1'b1;
                 end
                 // else: wait for memory read request issue/response
@@ -364,7 +370,7 @@ module load_store_queue #(
                         8'd3: lsq[mem_inflight_idx].data[127:96] <= dmem_read_data;
                     endcase
                     
-                    if (vec_load_word_idx == (vec_load_total_words - 1) || vec_load_word_idx == (DLEN/32 - 1)) begin
+                    if (vec_load_word_idx == (vec_load_total_words - 1) || vec_load_word_idx == ((`DLEN/32) - 1)) begin
                         lsq[mem_inflight_idx].data_valid <= 1'b1; // This will prompt the change of issue_load_valid and issue_load_idx
                         vec_load_word_idx <= 'd0;
                         mem_inflight_valid <= 1'b0; 
@@ -377,7 +383,7 @@ module load_store_queue #(
                     end
                 end 
                 else begin // scalar load response finishes in one beat
-                    lsq[mem_inflight_idx].data <= { {(DLEN-XLEN){1'b0}}, format_data(dmem_read_data, lsq[mem_inflight_idx].mem_size, lsq[mem_inflight_idx].address[1:0]) };
+                    lsq[mem_inflight_idx].data <= { {(`DLEN-`XLEN){1'b0}}, format_data(dmem_read_data, lsq[mem_inflight_idx].mem_size, lsq[mem_inflight_idx].address[1:0]) };
                     lsq[mem_inflight_idx].data_valid <= 1'b1;
                     mem_inflight_valid <= 1'b0; // Scalar request done
                 end
@@ -401,7 +407,7 @@ module load_store_queue #(
                             vec_store_word_idx <= 'd0;
                         end 
                         else if (dmem_write_ready) begin // Memory has consumed an element request
-                            if (vec_store_word_idx == (vec_store_total_words - 1) || vec_store_word_idx == (DLEN/32 - 1)) begin
+                            if (vec_store_word_idx == (vec_store_total_words - 1) || vec_store_word_idx == ((`DLEN/32) - 1)) begin
                                 vec_store_active <= 1'b0; // Vector Store completely finished
                                 lsq[head].valid <= 1'b0; // Retire head
                                 head <= head + 1; // Advance head pointer
@@ -455,7 +461,7 @@ module load_store_queue #(
             
         end 
         else begin
-            dmem_write_addr = {lsq[head].address[XLEN-1:2], 2'b00}; // Word-aligned memory bus
+            dmem_write_addr = {lsq[head].address[`XLEN-1:2], 2'b00}; // Word-aligned memory bus
             dmem_write_en = lsq[head].is_store && lsq[head].committed && dmem_write_ready; // Pulled up only for a cycle
             if(lsq[head].mem_size == 3'b000) begin // SB (Store Byte)
                 dmem_be = 4'b0001 << byte_offset; 
@@ -467,7 +473,7 @@ module load_store_queue #(
             end 
             else begin // SW (Store Word)
                 dmem_be = 4'b1111;
-                dmem_write_data = lsq[head].data[XLEN-1:0];
+                dmem_write_data = lsq[head].data[`XLEN-1:0];
             end
         end
     end
@@ -475,8 +481,10 @@ module load_store_queue #(
     // ========================================================================
     // CDB Interface: Decoupled Broadcast Scanner
     // ========================================================================
-    
+    logic [`LSQ_TAG_WIDTH-1:0] ptr_broadcast_select;
+
     always @(*) begin
+        integer i;
         lsq_data_out = 0;
         lsq_out_valid = 1'b0;
         cdb_phys_tag_out = 0;
@@ -484,28 +492,29 @@ module load_store_queue #(
         vec_lsq_out_valid = 1'b0;
         vec_cdb_phys_tag_out = 0;
         broadcast_idx = 0;
-        
+        ptr_broadcast_select = 0;
+
         // Scan from Head to Tail for oldest un-broadcasted ready entry
-        for (int i = 0; i < LSQ_SIZE; i++) begin
-            logic [LSQ_TAG_WIDTH-1:0] ptr = head + i[LSQ_TAG_WIDTH-1:0];
+        for (i = 0; i < `LSQ_SIZE; i++) begin
+            ptr_broadcast_select = head + i[`LSQ_TAG_WIDTH-1:0];
             
             // An entry is ready to broadcast when:
             // - A load has its data ready from memory.
             // - A store has its address ready from the AGU.
-            if (lsq[ptr].valid && !lsq[ptr].broadcasted) begin
-                if ((!lsq[ptr].is_store && lsq[ptr].data_valid) || 
-                    (lsq[ptr].is_store && lsq[ptr].addr_valid)) begin
+            if (lsq[ptr_broadcast_select].valid && !lsq[ptr_broadcast_select].broadcasted) begin
+                if ((!lsq[ptr_broadcast_select].is_store && lsq[ptr_broadcast_select].data_valid) || 
+                    (lsq[ptr_broadcast_select].is_store && lsq[ptr_broadcast_select].addr_valid)) begin
                     
-                    if (lsq[ptr].is_vector && !lsq[ptr].is_store) begin // Vector Load -> Vector CDB
+                    if (lsq[ptr_broadcast_select].is_vector && !lsq[ptr_broadcast_select].is_store) begin // Vector Load -> Vector CDB
                         vec_lsq_out_valid = 1'b1;
-                        vec_cdb_phys_tag_out = lsq[ptr].phys_tag;
-                        vec_lsq_data_out = lsq[ptr].data;
+                        vec_cdb_phys_tag_out = lsq[ptr_broadcast_select].phys_tag;
+                        vec_lsq_data_out = lsq[ptr_broadcast_select].data;
                     end else begin // Scalar Load or any Store -> Scalar CDB
                         lsq_out_valid = 1'b1;
-                        cdb_phys_tag_out = lsq[ptr].phys_tag;
-                        lsq_data_out = lsq[ptr].data[XLEN-1:0]; // Truncate for scalar bus
+                        cdb_phys_tag_out = lsq[ptr_broadcast_select].phys_tag;
+                        lsq_data_out = lsq[ptr_broadcast_select].data[`XLEN-1:0]; // Truncate for scalar bus
                     end
-                    broadcast_idx = ptr;
+                    broadcast_idx = ptr_broadcast_select; // Record the idx for acknowledgment in the next cycle
                     break;
                 end
             end

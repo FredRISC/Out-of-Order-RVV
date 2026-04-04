@@ -4,19 +4,16 @@
 
 `include "../riscv_header.sv"
 
-module alu #(
-    parameter XLEN = 32,
-    parameter VLEN = 128
-) (
+module alu (
     input clk,
     input rst_n,
     
-    input [XLEN-1:0] operand1,
-    input [XLEN-1:0] operand2,
+    input [`XLEN-1:0] operand1,
+    input [`XLEN-1:0] operand2,
     input [4:0] alu_op,
     input valid_in,
     
-    output reg [XLEN-1:0] result,
+    output reg [`XLEN-1:0] result,
     output reg valid_out
 );
 
@@ -45,7 +42,7 @@ module alu #(
             default: lmul_val = 32'd1; // Note: Fractional LMUL treated as 1 for basic prototype
         endcase
         
-        vlmax = (VLEN * lmul_val) / sew_val;
+        vlmax = (`VLEN * lmul_val) / sew_val;
     end
 
     always @(posedge clk or negedge rst_n) begin

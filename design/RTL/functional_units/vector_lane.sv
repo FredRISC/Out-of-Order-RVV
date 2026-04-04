@@ -5,18 +5,16 @@
 
 `include "../riscv_header.sv"
 
-module vector_lane #(
-    parameter ELEN = 32
-) (
+module vector_lane (
     input clk,
     input rst_n,
     
-    input [ELEN-1:0] operand1,
-    input [ELEN-1:0] operand2,
+    input [`ELEN-1:0] operand1,
+    input [`ELEN-1:0] operand2,
     input [4:0] vec_op,
     input valid_in,
     
-    output reg [ELEN-1:0] result,
+    output reg [`ELEN-1:0] result,
     output reg valid_out
 );
 

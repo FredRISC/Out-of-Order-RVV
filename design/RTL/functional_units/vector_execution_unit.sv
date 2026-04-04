@@ -2,17 +2,13 @@
 // vector_execution_unit.sv - Vector ALU with 4 Parallel Lanes
 // ============================================================================
 // RVV v1.0 subset: element-wise operations
-// VLEN=128, 4 lanes of 32-bit elements
+// `VLEN=128, 4 lanes of 32-bit elements
 // Chaining will be enabled later (Pipelining)
 
 
 `include "../riscv_header.sv"
 
-module vector_execution_unit #(
-    parameter VLEN = 128,
-    parameter ELEN = 32,
-    parameter NUM_VEC_LANES = 4
-) (
+module vector_execution_unit (
     input clk,
     input rst_n,
     
@@ -21,13 +17,13 @@ module vector_execution_unit #(
     input [31:0] vtype,
     
     // Operand interface
-    input [VLEN-1:0] vec_src1,
-    input [VLEN-1:0] vec_src2,
+    input [`VLEN-1:0] vec_src1,
+    input [`VLEN-1:0] vec_src2,
     input [4:0] vec_op,
     input vec_valid,
     
     // Result interface
-    output reg [VLEN-1:0] vec_result,
+    output reg [`VLEN-1:0] vec_result,
     output reg vec_result_valid,
     
     // Handshaking with Execute Stage
@@ -36,15 +32,16 @@ module vector_execution_unit #(
 );
 
     // Lane interface: 4 parallel 32-bit lanes
-    logic [ELEN-1:0] lane_src1 [NUM_VEC_LANES-1:0];
-    logic [ELEN-1:0] lane_src2 [NUM_VEC_LANES-1:0];
-    logic [ELEN-1:0] lane_result [NUM_VEC_LANES-1:0];
+    logic [`ELEN-1:0] lane_src1 [`NUM_VEC_LANES-1:0];
+    logic [`ELEN-1:0] lane_src2 [`NUM_VEC_LANES-1:0];
+    logic [`ELEN-1:0] lane_result [`NUM_VEC_LANES-1:0];
     
     // Distribute operands across lanes        
     always @(*) begin
-        for (i = 0; i < NUM_VEC_LANES; i++) begin
-            lane_src1[i] = vec_src1[i*ELEN +: ELEN];
-            lane_src2[i] = vec_src2[i*ELEN +: ELEN];
+        integer j;
+        for (j = 0; j < `NUM_VEC_LANES; j++) begin
+            lane_src1[j] = vec_src1[j*`ELEN +: `ELEN];
+            lane_src2[j] = vec_src2[j*`ELEN +: `ELEN];
         end
     end
 
@@ -52,12 +49,11 @@ module vector_execution_unit #(
     // ========================================================================
     // Lane Execution Units (element-wise operations)
     // ========================================================================
-    logic lane_valid [NUM_VEC_LANES-1:0];
+    logic lane_valid [`NUM_VEC_LANES-1:0];
+    genvar i;
     generate
-        for (i = 0; i < NUM_VEC_LANES; i++) begin : gen_lanes
-            vector_lane #(
-                .ELEN(ELEN)
-            ) lane (
+        for (i = 0; i < `NUM_VEC_LANES; i++) begin : gen_lanes
+            vector_lane lane (
                 .clk(clk),
                 .rst_n(rst_n),
                 .operand1(lane_src1[i]),
@@ -75,10 +71,11 @@ module vector_execution_unit #(
     // ========================================================================
     
     // Combinational logic to assemble the full result from lanes
-    logic [DLEN-1:0] lane_results_comb;
+    logic [`DLEN-1:0] lane_results_comb;
     always @(*) begin
-        for (int j = 0; j < NUM_VEC_LANES; j++) begin
-            lane_results_comb[j*ELEN +: ELEN] = lane_result[j];
+        integer k;
+        for (k = 0; k < `NUM_VEC_LANES; k++) begin
+            lane_results_comb[k*`ELEN +: `ELEN] = lane_result[k];
         end
     end
 

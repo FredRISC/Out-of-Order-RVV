@@ -10,50 +10,40 @@
 
 `include "riscv_header.sv"
 
-module execute_stage #(
-    parameter XLEN = 32,
-    parameter VLEN = 128,
-    parameter DLEN = `DLEN,
-    parameter NUM_ALU_FUS = 1,        // Number of ALU instances
-    parameter NUM_MUL_FUS = 1,        // Number of multiplier instances
-    parameter NUM_DIV_FUS = 1,        // Number of divider instances
-    parameter MUL_LATENCY = 4,
-    parameter DIV_LATENCY = 6,
-    parameter LSQ_TAG_WIDTH = 3
-) (
+module execute_stage (
     input clk,
     input rst_n,
     input flush,
     
     // From reservation stations (ALU, MEM, MUL, DIV, VEC)
-    input [XLEN-1:0] alu_op1, alu_op2, // Operand 1 (Register or PC or 0), Operand 2 (Register or Imm)
-    input [XLEN-1:0] alu_pc, alu_imm,
+    input [`XLEN-1:0] alu_op1, alu_op2, // Operand 1 (Register or PC or 0), Operand 2 (Register or Imm)
+    input [`XLEN-1:0] alu_pc, alu_imm,
     input alu_predicted_branch,
-    input [XLEN-1:0] alu_predicted_target,
+    input [`XLEN-1:0] alu_predicted_target,
     input [4:0] alu_operation,
     input alu_valid,
     input [5:0] alu_tag,
     
-    input [XLEN-1:0] mem_op1, // Base Address
-    input [DLEN-1:0] mem_op2, // Store Data (Scalar or Vector)
-    input [XLEN-1:0] mem_imm,
+    input [`XLEN-1:0] mem_op1, // Base Address
+    input [`DLEN-1:0] mem_op2, // Store Data (Scalar or Vector)
+    input [`XLEN-1:0] mem_imm,
     input [4:0] mem_operation,
     input mem_valid,
     input [31:0] mem_vl,
     input [5:0] mem_tag,
-    input [LSQ_TAG_WIDTH-1:0] mem_lsq_tag, // LSQ Entry Tag
+    input [`LSQ_TAG_WIDTH-1:0] mem_lsq_tag, // LSQ Entry Tag
     
-    input [XLEN-1:0] mul_op1, mul_op2,
+    input [`XLEN-1:0] mul_op1, mul_op2,
     input [4:0] mul_operation,
     input mul_valid,
     input [5:0] mul_tag,
     
-    input [XLEN-1:0] div_op1, div_op2,
+    input [`XLEN-1:0] div_op1, div_op2,
     input [4:0] div_operation,
     input div_valid,
     input [5:0] div_tag,
     
-    input [VLEN-1:0] vec_op1, vec_op2,
+    input [`VLEN-1:0] vec_op1, vec_op2,
     input [4:0] vec_operation,
     input vec_valid,
     input [5:0] vec_tag,
@@ -67,19 +57,19 @@ module execute_stage #(
     input [31:0] lsq_alloc_vtype,
     input [2:0] lsq_alloc_size,
     input [5:0] alloc_phys_tag,
-    output [LSQ_TAG_WIDTH-1:0] alloc_tag,
+    output [`LSQ_TAG_WIDTH-1:0] alloc_tag,
     output lsq_full,
     
     // Memory interface (from LSU)
     // Read Port
-    output [XLEN-1:0] dmem_read_addr,
+    output [`XLEN-1:0] dmem_read_addr,
     output dmem_read_en,
-    input [XLEN-1:0] dmem_read_data,
+    input [`XLEN-1:0] dmem_read_data,
     input dmem_read_valid,
     
     // Write Port
-    output [XLEN-1:0] dmem_write_addr,
-    output [XLEN-1:0] dmem_write_data,
+    output [`XLEN-1:0] dmem_write_addr,
+    output [`XLEN-1:0] dmem_write_data,
     output dmem_write_en,
     input dmem_write_ready,
     output [3:0] dmem_be,
@@ -94,31 +84,31 @@ module execute_stage #(
     // Pipeline Flush Requests to ROB (Branch & Memory)
     output logic alu_flush_req,
     output logic [5:0] alu_flush_tag,
-    output logic [XLEN-1:0] alu_flush_target,
+    output logic [`XLEN-1:0] alu_flush_target,
     
     // Branch Predictor Update Interface
     output logic branch_update_req,
-    output logic [XLEN-1:0] branch_update_pc,
-    output logic [XLEN-1:0] branch_update_target,
+    output logic [`XLEN-1:0] branch_update_pc,
+    output logic [`XLEN-1:0] branch_update_target,
     output logic branch_update_taken,
 
     // CDB 0 Broadcast Interface (Scheduled - ALU/MUL/VEC)
-    output logic [XLEN-1:0] cdb0_result,
+    output logic [`XLEN-1:0] cdb0_result,
     output logic [5:0] cdb0_tag,
     output logic cdb0_valid,
     
     // CDB 1 Broadcast Interface (Unscheduled - LSQ/DIV)
-    output logic [XLEN-1:0] cdb1_result,
+    output logic [`XLEN-1:0] cdb1_result,
     output logic [5:0] cdb1_tag,
     output logic cdb1_valid,
 
     // Vector CDB 0 (Scheduled - VEU)
-    output logic [DLEN-1:0] vec_cdb0_result,
+    output logic [`DLEN-1:0] vec_cdb0_result,
     output logic [5:0] vec_cdb0_tag,
     output logic vec_cdb0_valid,
     
     // Vector CDB 1 (Unscheduled - LSQ)
-    output logic [DLEN-1:0] vec_cdb1_result,
+    output logic [`DLEN-1:0] vec_cdb1_result,
     output logic [5:0] vec_cdb1_tag,
     output logic vec_cdb1_valid
 );
@@ -128,29 +118,29 @@ module execute_stage #(
     // ========================================================================
     
     // ALU FU outputs (can have multiple ALUs)
-    logic [XLEN-1:0] alu_results [NUM_ALU_FUS-1:0];
-    logic [5:0] alu_tags [NUM_ALU_FUS-1:0];
-    logic alu_valids [NUM_ALU_FUS-1:0];
+    logic [`XLEN-1:0] alu_results [`NUM_ALU_FUS-1:0];
+    logic [5:0] alu_tags [`NUM_ALU_FUS-1:0];
+    logic alu_valids [`NUM_ALU_FUS-1:0];
     
     // MUL FU outputs (can have multiple multipliers)
-    logic [XLEN-1:0] mul_results [NUM_MUL_FUS-1:0];
-    logic [5:0] mul_tags [NUM_MUL_FUS-1:0];
-    logic mul_valids [NUM_MUL_FUS-1:0];
+    logic [`XLEN-1:0] mul_results [`NUM_MUL_FUS-1:0];
+    logic [5:0] mul_tags [`NUM_MUL_FUS-1:0];
+    logic mul_valids [`NUM_MUL_FUS-1:0];
     
     // DIV FU outputs (can have multiple dividers)
-    logic [XLEN-1:0] div_results [NUM_DIV_FUS-1:0];
-    logic [5:0] div_tags [NUM_DIV_FUS-1:0];
-    logic div_valids [NUM_DIV_FUS-1:0];
+    logic [`XLEN-1:0] div_results [`NUM_DIV_FUS-1:0];
+    logic [5:0] div_tags [`NUM_DIV_FUS-1:0];
+    logic div_valids [`NUM_DIV_FUS-1:0];
     
     // LSU output
-    logic [XLEN-1:0] lsu_scalar_result;
+    logic [`XLEN-1:0] lsu_scalar_result;
     logic lsu_valid;
-    logic [DLEN-1:0] lsu_vector_result;
+    logic [`DLEN-1:0] lsu_vector_result;
     logic [5:0]      lsu_vector_tag;
     logic            lsu_vector_valid;
     
     // VEU output
-    logic [DLEN-1:0] veu_result;
+    logic [`DLEN-1:0] veu_result;
     logic [5:0] vec_result_tag;
     logic vec_result_valid;
 
@@ -160,8 +150,8 @@ module execute_stage #(
     
     genvar i;
     generate
-        for (i = 0; i < NUM_ALU_FUS; i = i + 1) begin : gen_alus
-            alu #(.XLEN(XLEN), .VLEN(VLEN)) alu_inst (
+        for (i = 0; i < `NUM_ALU_FUS; i = i + 1) begin : gen_alus
+            alu alu_inst (
                 .clk(clk),
                 .rst_n(rst_n),
                 .operand1(alu_op1),
@@ -184,11 +174,8 @@ module execute_stage #(
     // ========================================================================
     
     generate
-        for (i = 0; i < NUM_MUL_FUS; i = i + 1) begin : gen_muls
-            multiplier #(
-                .XLEN(XLEN),
-                .MUL_LATENCY(MUL_LATENCY)
-            ) mul_inst (
+        for (i = 0; i < `NUM_MUL_FUS; i = i + 1) begin : gen_muls
+            multiplier mul_inst (
                 .clk(clk),
                 .rst_n(rst_n),
                 .multiplicand(mul_op1),
@@ -212,11 +199,8 @@ module execute_stage #(
     // ========================================================================
     
     generate
-        for (i = 0; i < NUM_DIV_FUS; i = i + 1) begin : gen_divs
-            divider #(
-                .XLEN(XLEN),
-                .DIV_LATENCY(DIV_LATENCY)
-            ) div_inst (
+        for (i = 0; i < `NUM_DIV_FUS; i = i + 1) begin : gen_divs
+            divider div_inst (
                 .clk(clk),
                 .rst_n(rst_n),
                 .dividend(div_op1),
@@ -240,7 +224,7 @@ module execute_stage #(
     // ========================================================================
     
     // AGU (Address Generation Unit)
-    logic [XLEN-1:0] agu_addr;
+    logic [`XLEN-1:0] agu_addr;
     assign agu_addr = mem_op1 + mem_imm;
 
     // Decode Load/Store (Assuming bit 0 differentiates if ALU_ADD is ambiguous, 
@@ -254,7 +238,7 @@ module execute_stage #(
     
     logic [5:0] lsu_tag_extended;
 
-    load_store_queue #(.LSQ_SIZE(16), .XLEN(XLEN), .DLEN(DLEN)) lsq_inst (
+    load_store_queue lsq_inst (
         .clk(clk),
         .rst_n(rst_n),
         .flush(flush), 
@@ -271,7 +255,7 @@ module execute_stage #(
 
         // Execute Interface
         .exe_addr(agu_addr),
-        .exe_data(mem_op2[XLEN-1:0]), // TRUNCATED temporarily until VLSU is implemented
+        .exe_data(mem_op2[`XLEN-1:0]), // TRUNCATED temporarily until VLSU is implemented
         .exe_lsq_tag(mem_lsq_tag),
         .exe_vl(mem_vl),
         .exe_is_strided(exe_is_strided),
@@ -314,11 +298,7 @@ module execute_stage #(
     // Vector Execution Unit (Single)
     // ========================================================================
     
-    vector_execution_unit #(
-        .VLEN(`VLEN),
-        .ELEN(`ELEN),
-        .NUM_VEC_LANES(`NUM_VEC_LANES)
-    ) veu_inst (
+    vector_execution_unit veu_inst (
         .clk(clk),
         .rst_n(rst_n),
         .vl(vec_vl),
@@ -345,17 +325,18 @@ module execute_stage #(
     // Result Selection From Each FU Type (Priority Encoding)
     // ========================================================================
    
-    logic [XLEN-1:0] alu_result_selected;
+    logic [`XLEN-1:0] alu_result_selected;
     logic [5:0] alu_tag_selected;
     logic alu_result_valid;
     
     // ALU result selection
     always @(*) begin
+        integer j;
         alu_result_valid = 1'b0;
         alu_result_selected = 0;
         alu_tag_selected = 0;
         
-        for (int j = 0; j < NUM_ALU_FUS; j = j + 1) begin
+        for (j = 0; j < `NUM_ALU_FUS; j = j + 1) begin
             if (alu_valids[j]) begin
                 alu_result_valid = 1'b1;
                 alu_result_selected = alu_results[j];
@@ -366,15 +347,16 @@ module execute_stage #(
     end
     
     // MUL result selection
-    logic [XLEN-1:0] mul_result_selected;
+    logic [`XLEN-1:0] mul_result_selected;
     logic [5:0] mul_tag_selected;
     logic mul_result_valid;
     
     always @(*) begin
+        integer j;
         mul_result_valid = 1'b0;
         mul_result_selected = 0;
         mul_tag_selected = 0;
-        for (int j = 0; j < NUM_MUL_FUS; j = j + 1) begin
+        for (j = 0; j < `NUM_MUL_FUS; j = j + 1) begin
             if (mul_valids[j]) begin
                 mul_result_valid = 1'b1;
                 mul_result_selected = mul_results[j];
@@ -385,15 +367,16 @@ module execute_stage #(
     end
 
     // DIV result selection
-    logic [XLEN-1:0] div_result_selected;
+    logic [`XLEN-1:0] div_result_selected;
     logic [5:0] div_tag_selected;
     logic div_result_valid;
     
     always @(*) begin
+        integer j;
         div_result_valid = 1'b0;
         div_result_selected = 0;
         div_tag_selected = 0;
-        for (int j = 0; j < NUM_DIV_FUS; j = j + 1) begin
+        for (j = 0; j < `NUM_DIV_FUS; j = j + 1) begin
             if (div_valids[j]) begin
                 div_result_valid = 1'b1;
                 div_result_selected = div_results[j];
@@ -413,7 +396,7 @@ module execute_stage #(
     // redirect Fetch immediately without touching the ROB, saving penalty cycles on BTB misses.
 
     logic actual_taken;
-    logic [XLEN-1:0] actual_target;
+    logic [`XLEN-1:0] actual_target;
     
     logic is_branch, is_jal, is_jalr;
     assign is_branch = (alu_operation >= `ALU_BEQ && alu_operation <= `ALU_BGEU);

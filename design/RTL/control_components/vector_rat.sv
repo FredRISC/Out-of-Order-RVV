@@ -33,8 +33,8 @@ module vector_rat (
 
     // Speculative Vector RAT (used for dispatch/renaming)
     // Architectural Vector RAT (used for recovery on flush)
-    logic [5:0] spec_rat [NUM_VEC_REGS-1:0];
-    logic [5:0] arch_rat [NUM_VEC_REGS-1:0];
+    logic [5:0] spec_rat [`NUM_VEC_REGS-1:0];
+    logic [5:0] arch_rat [`NUM_VEC_REGS-1:0];
     
     assign src1_phys = spec_rat[src1_arch];
     assign src2_phys = spec_rat[src2_arch];
@@ -42,7 +42,7 @@ module vector_rat (
     
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int i = 0; i < NUM_VEC_REGS; i++) begin
+            for (int i = 0; i < `NUM_VEC_REGS; i++) begin
                 spec_rat[i] <= i[5:0];
                 arch_rat[i] <= i[5:0];
             end
@@ -52,7 +52,7 @@ module vector_rat (
                 
             if (flush) begin
                 // Recovery: Restore from architectural vRAT, including the new commit
-                for (int i = 0; i < NUM_VEC_REGS; i++) begin
+                for (int i = 0; i < `NUM_VEC_REGS; i++) begin
                     if (commit_en && commit_arch == i) // When flush and commit are both true, roll back with the latest commit state
                         spec_rat[i] <= commit_phys;
                     else

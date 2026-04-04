@@ -1,38 +1,35 @@
 // ============================================================================
 // divider.sv - 32-bit Divider (Radix-4 Digit Recurrence, 6-cycle pipelined)
 // ============================================================================
-// Latency: DIV_LATENCY (default 6 cycles)
+// Latency: `DIV_LATENCY (default 6 cycles)
 // Supports: DIV, DIVU, REM, REMU
 
 `include "../riscv_header.sv"
 
-module divider #(
-    parameter XLEN = 32,
-    parameter DIV_LATENCY = 6
-) (
+module divider (
     input clk,
     input rst_n,
     
-    input [XLEN-1:0] dividend,
-    input [XLEN-1:0] divisor,
+    input [`XLEN-1:0] dividend,
+    input [`XLEN-1:0] divisor,
     input valid_in,
     input [1:0] div_type,  // 00=DIV, 01=DIVU, 10=REM, 11=REMU
     
-    output reg [XLEN-1:0] quotient,
-    output reg [XLEN-1:0] remainder,
+    output reg [`XLEN-1:0] quotient,
+    output reg [`XLEN-1:0] remainder,
     output reg valid_out
 );
 
     // Pipeline stages
-    reg [XLEN-1:0] q_pipe [DIV_LATENCY-1:0];
-    reg [XLEN-1:0] r_pipe [DIV_LATENCY-1:0];
-    reg stage_valid [DIV_LATENCY-1:0];
-    reg [1:0] div_type_pipe [DIV_LATENCY-1:0];
+    reg [`XLEN-1:0] q_pipe [`DIV_LATENCY-1:0];
+    reg [`XLEN-1:0] r_pipe [`DIV_LATENCY-1:0];
+    reg stage_valid [`DIV_LATENCY-1:0];
+    reg [1:0] div_type_pipe [`DIV_LATENCY-1:0];
     
     wire is_signed = ~div_type[0];
     
     // Combinational math for Stage 0 (RISC-V Compliant)
-    logic [XLEN-1:0] q_comb, r_comb;
+    logic [`XLEN-1:0] q_comb, r_comb;
     
     // Behavioral modeling of division with RISC-V specified edge cases handled
     // Replace this with real divider IP. This is just for functional correctness in the prototype.
@@ -62,8 +59,9 @@ module divider #(
     
     // Behavioral Pipeline Delay
     always @(posedge clk or negedge rst_n) begin
+        integer i;
         if (!rst_n) begin
-            for (int i = 0; i < DIV_LATENCY; i++) begin
+            for (i = 0; i < `DIV_LATENCY; i++) begin
                 q_pipe[i] <= 0;
                 r_pipe[i] <= 0;
                 stage_valid[i] <= 1'b0;
@@ -81,7 +79,7 @@ module divider #(
             end
             
             // Pipeline stages 1 to N: Shift forward
-            for (int i = 1; i < DIV_LATENCY; i++) begin
+            for (i = 1; i < `DIV_LATENCY; i++) begin
                 q_pipe[i] <= q_pipe[i-1];
                 r_pipe[i] <= r_pipe[i-1];
                 stage_valid[i] <= stage_valid[i-1];
@@ -92,16 +90,16 @@ module divider #(
     
     // Output Routing (Mux the quotient or remainder based on requested instruction)
     always @(*) begin
-        valid_out = stage_valid[DIV_LATENCY-1];
+        valid_out = stage_valid[`DIV_LATENCY-1];
         
-        if (div_type_pipe[DIV_LATENCY-1][1]) begin 
+        if (div_type_pipe[`DIV_LATENCY-1][1]) begin 
             // bit 1 is high for REM / REMU
-            quotient = r_pipe[DIV_LATENCY-1];
-            remainder = r_pipe[DIV_LATENCY-1];
+            quotient = r_pipe[`DIV_LATENCY-1];
+            remainder = r_pipe[`DIV_LATENCY-1];
         end else begin
             // bit 1 is low for DIV / DIVU
-            quotient = q_pipe[DIV_LATENCY-1];
-            remainder = r_pipe[DIV_LATENCY-1];
+            quotient = q_pipe[`DIV_LATENCY-1];
+            remainder = r_pipe[`DIV_LATENCY-1];
         end
     end
 

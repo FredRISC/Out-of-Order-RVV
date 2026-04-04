@@ -13,52 +13,52 @@ module riscv_core_top (
     input clk,
     input rst_n,
     
-    output [XLEN-1:0] imem_addr,
-    input [INST_WIDTH-1:0] imem_data,
+    output [`XLEN-1:0] imem_addr,
+    input [`INST_WIDTH-1:0] imem_data,
     input imem_valid,
     
     // Data Memory - Dual Port Assumption
     // Read Port
-    output [XLEN-1:0] dmem_read_addr,
+    output [`XLEN-1:0] dmem_read_addr,
     output dmem_read_en,
-    input [XLEN-1:0] dmem_read_data,
+    input [`XLEN-1:0] dmem_read_data,
     input dmem_read_valid,
     
     // Write Port
-    output [XLEN-1:0] dmem_write_addr,
-    output [XLEN-1:0] dmem_write_data,
+    output [`XLEN-1:0] dmem_write_addr,
+    output [`XLEN-1:0] dmem_write_data,
     output dmem_write_en,
     input dmem_write_ready, // Add to top level interface
     output [3:0] dmem_be,
     
     input ext_irq,
     output exception_valid,
-    output [EXCEPTION_CODE_WIDTH-1:0] exception_code,
-    output [NUM_INT_REGS-1:0][XLEN-1:0] debug_reg_file
+    output [`EXCEPTION_CODE_WIDTH-1:0] exception_code,
+    output [`NUM_INT_REGS-1:0][`XLEN-1:0] debug_reg_file
 );
-
+    
     // ========================================================================
     // INTERNAL SIGNALS
     // ========================================================================
     
     // Pipeline stage signals
-    logic [XLEN-1:0] fetch_pc, decode_pc;
-    logic [INST_WIDTH-1:0] fetch_instr, decode_instr;
+    logic [`XLEN-1:0] fetch_pc, decode_pc;
+    logic [`INST_WIDTH-1:0] fetch_instr, decode_instr;
     logic [3:0] decode_instr_type;
     logic fetch_valid, decode_valid, dispatch_valid;
     logic [3:0] dispatch_rs_type;
     logic fetch_predicted_branch, decode_predicted_branch, dispatch_predicted_branch;
-    logic [XLEN-1:0] fetch_predicted_target, decode_predicted_target, dispatch_predicted_target;
+    logic [`XLEN-1:0] fetch_predicted_target, decode_predicted_target, dispatch_predicted_target;
     logic dispatch_rs_alloc, dispatch_rob_alloc, dispatch_lsq_alloc;
     logic dispatch_src1_valid, dispatch_src2_valid;
     logic dispatch_lsq_is_store;
     logic dispatch_lsq_is_vector;
     logic [31:0] dispatch_lsq_vtype;
-    logic [LSQ_TAG_WIDTH-1:0] dispatch_lsq_tag, lsq_alloc_tag_from_exec;
+    logic [`LSQ_TAG_WIDTH-1:0] dispatch_lsq_tag, lsq_alloc_tag_from_exec;
     logic [2:0] dispatch_lsq_size;
     
     // Dispatch outputs
-    logic [XLEN-1:0] dispatch_imm, dispatch_pc;
+    logic [`XLEN-1:0] dispatch_imm, dispatch_pc;
     logic [4:0] dispatch_dest_reg;
     logic [4:0] dispatch_alu_op;
     logic dispatch_use_rs1, dispatch_use_rs2, dispatch_use_pc;
@@ -70,31 +70,31 @@ module riscv_core_top (
     logic [5:0] rat_src1_phys, rat_src2_phys, rat_dst_phys, rat_dst_old_phys;
     
     // Physical register file signals
-    logic [XLEN-1:0] phys_reg_data1, phys_reg_data2;
-    logic [XLEN-1:0] phys_reg_data_commit;
-    logic [NUM_PHYS_REGS-1:0] phys_reg_status;
+    logic [`XLEN-1:0] phys_reg_data1, phys_reg_data2;
+    logic [`XLEN-1:0] phys_reg_data_commit;
+    logic [`NUM_PHYS_REGS-1:0] phys_reg_status;
     logic [5:0] commit_read_addr_wire;
     
     // RS signals (5 types)
     logic alu_rs_full, mem_rs_full, mul_rs_full, div_rs_full, vec_rs_full;
     logic [4:0] alu_operation, mem_operation, vec_operation, mul_operation, div_operation;
     logic alu_valid, mem_valid, mul_valid, div_valid, vec_valid;
-    logic [LSQ_TAG_WIDTH-1:0] mem_lsq_tag; // To Execute
+    logic [`LSQ_TAG_WIDTH-1:0] mem_lsq_tag; // To Execute
     
     // Dual CDBs
-    logic [XLEN-1:0] cdb0_result;
+    logic [`XLEN-1:0] cdb0_result;
     logic [5:0] cdb0_tag;
     logic cdb0_valid;
-    logic [XLEN-1:0] cdb1_result;
+    logic [`XLEN-1:0] cdb1_result;
     logic [5:0] cdb1_tag;
     logic cdb1_valid;
     
     // Vector CDBs
-    logic [VLEN-1:0] vec_cdb0_result;
+    logic [`VLEN-1:0] vec_cdb0_result;
     logic [5:0] vec_cdb0_tag;
     logic vec_cdb0_valid;
     
-    logic [VLEN-1:0] vec_cdb1_result;
+    logic [`VLEN-1:0] vec_cdb1_result;
     logic [5:0] vec_cdb1_tag;
     logic vec_cdb1_valid;
     
@@ -107,7 +107,7 @@ module riscv_core_top (
     // Vector PRF and Free List Signals
     logic [5:0] free_vphys_reg;
     logic free_vlist_valid;
-    logic [NUM_PHYS_REGS-1:0] vphys_reg_status;
+    logic [`NUM_PHYS_REGS-1:0] vphys_reg_status;
 
     // Free list signals
     logic [5:0] free_phys_reg;
@@ -120,31 +120,31 @@ module riscv_core_top (
     logic [5:0] mul_issue_src1_tag, mul_issue_src2_tag, mul_issue_dest_tag;
     logic [5:0] div_issue_src1_tag, div_issue_src2_tag, div_issue_dest_tag;
     logic [5:0] vec_issue_src1_tag, vec_issue_src2_tag, vec_issue_dest_tag, vec_issue_vl_tag;
-    logic [XLEN-1:0] alu_issue_imm, alu_issue_pc, mem_issue_imm;
-    logic [XLEN-1:0] vec_issue_vtype;
+    logic [`XLEN-1:0] alu_issue_imm, alu_issue_pc, mem_issue_imm;
+    logic [`XLEN-1:0] vec_issue_vtype;
     logic alu_issue_predicted_branch;
-    logic [XLEN-1:0] alu_issue_predicted_target;
+    logic [`XLEN-1:0] alu_issue_predicted_target;
     logic [4:0] alu_issue_op, mem_issue_op, mul_issue_op, div_issue_op, vec_issue_op;
     logic alu_issue_use_rs1, alu_issue_use_rs2, alu_issue_use_pc, mem_issue_use_rs1, mem_issue_use_rs2, mem_issue_use_vl, vec_issue_use_vl;
-    logic [LSQ_TAG_WIDTH-1:0] mem_issue_lsq_tag;
+    logic [`LSQ_TAG_WIDTH-1:0] mem_issue_lsq_tag;
 
     // RegRead Stage -> Execute Stage Wires (To be driven by reg_read_stage)
-    logic [XLEN-1:0] alu_op1, alu_op2, mem_op1, mul_op1, mul_op2, div_op1, div_op2;
-    logic [XLEN-1:0] alu_pc_exec, alu_imm_exec;
+    logic [`XLEN-1:0] alu_op1, alu_op2, mem_op1, mul_op1, mul_op2, div_op1, div_op2;
+    logic [`XLEN-1:0] alu_pc_exec, alu_imm_exec;
     logic alu_predicted_branch_exec;
-    logic [XLEN-1:0] alu_predicted_target_exec;
-    logic [DLEN-1:0] mem_op2;
-    logic [XLEN-1:0] mem_imm_exec;
+    logic [`XLEN-1:0] alu_predicted_target_exec;
+    logic [`DLEN-1:0] mem_op2;
+    logic [`XLEN-1:0] mem_imm_exec;
     logic [31:0] mem_vl_exec;
-    logic [VLEN-1:0] vec_op1, vec_op2;
+    logic [`VLEN-1:0] vec_op1, vec_op2;
     logic [31:0] vec_vl_exec, vec_vtype_exec;
     logic [5:0] alu_tag, mem_tag, mul_tag, div_tag, vec_tag; 
     
     // PRF Read Ports Wiring
     logic [5:0] prf_read_addrs [0:9];
-    logic [XLEN-1:0] prf_read_datas [0:9];
+    logic [`XLEN-1:0] prf_read_datas [0:9];
     logic [5:0] vprf_read_addr1, vprf_read_addr2, vprf_read_addr3;
-    logic [VLEN-1:0] vprf_read_data1, vprf_read_data2, vprf_read_data3;
+    logic [`VLEN-1:0] vprf_read_data1, vprf_read_data2, vprf_read_data3;
     // ROB signals (TRACKING ONLY, not data)
     logic rob_full, rob_commit_valid;
     logic [4:0] rob_commit_dest_arch_reg;
@@ -152,19 +152,19 @@ module riscv_core_top (
     logic [5:0] rob_commit_old_phys_reg;   // Old physical reg to free
     logic [3:0] rob_commit_instr_type;
     logic rob_flush_req;
-    logic [XLEN-1:0] rob_flush_pc;
+    logic [`XLEN-1:0] rob_flush_pc;
     logic [31:0] rob_commit_vtype;
     
     logic branch_update_req, branch_update_taken;
-    logic [XLEN-1:0] branch_update_pc, branch_update_target;
+    logic [`XLEN-1:0] branch_update_pc, branch_update_target;
     logic alu_flush_req;
     logic [5:0] alu_flush_tag;
-    logic [XLEN-1:0] alu_flush_target;
+    logic [`XLEN-1:0] alu_flush_target;
      
     // Control signals
     logic flush_pipeline;
     logic stall_fetch, stall_decode, stall_dispatch;
-    logic [XLEN-1:0] flush_target_pc_wire;
+    logic [`XLEN-1:0] flush_target_pc_wire;
 
     logic lsq_full;
     logic lsq_flush_req;
@@ -174,8 +174,7 @@ module riscv_core_top (
     // STAGE 1: FETCH
     // ========================================================================
     
-    fetch_stage #(.XLEN(XLEN), .INST_WIDTH(INST_WIDTH))
-    fetch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_fetch), .flush(flush_pipeline),
+    fetch_stage fetch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_fetch), .flush(flush_pipeline),
         .flush_pc(flush_target_pc_wire), .pc_out(fetch_pc), .instr_out(fetch_instr),
         .valid_out(fetch_valid), .imem_addr(imem_addr), .imem_data(imem_data), .imem_valid(imem_valid));
 
@@ -183,8 +182,7 @@ module riscv_core_top (
     // STAGE 2: DECODE
     // ========================================================================
     
-    decode_stage #(.XLEN(XLEN), .INST_WIDTH(INST_WIDTH), .NUM_INT_REGS(NUM_INT_REGS))
-    decode_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline), .stall(stall_decode),
+    decode_stage decode_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline), .stall(stall_decode),
         .instr_in(fetch_instr), .pc_in(fetch_pc), .predicted_branch_in(fetch_predicted_branch), .predicted_target_in(fetch_predicted_target), .valid_in(fetch_valid),
         .instr_type_out(decode_instr_type), .pc_out(decode_pc),
         .predicted_branch_out(decode_predicted_branch), .predicted_target_out(decode_predicted_target),
@@ -206,10 +204,9 @@ module riscv_core_top (
     
     logic decode_instr_type_is_vec =  (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_LOAD || decode_instr_type == `V_EXT_STORE || decode_instr_type == `V_EXT_CONFIG);
 
-    physical_register_file #(.NUM_PHYS_REGS(NUM_PHYS_REGS), .XLEN(XLEN))
-    phys_regfile_inst (.clk(clk), .rst_n(rst_n),
+    physical_register_file phys_regfile_inst (.clk(clk), .rst_n(rst_n),
         .write_addr0(cdb0_tag), .write_data0(cdb0_result), .write_en0(cdb0_valid),
-        .write_addr1(vec_cdb1_tag), .write_data1(vec_cdb1_result), .write_en1(vec_cdb1_valid),
+        .write_addr1(cdb1_tag), .write_data1(cdb1_result), .write_en1(cdb1_valid),
         .read_addrs(prf_read_addrs), .read_datas(prf_read_datas),
         .commit_read_addr(commit_read_addr_wire),
         .commit_read_data(phys_reg_data_commit),
@@ -217,9 +214,9 @@ module riscv_core_top (
         .alloc_addr(rat_dst_phys), 
         .alloc_en(dispatch_valid && !decode_instr_type_is_vec)); 
 
-    vector_physical_register_file #(.NUM_PHYS_REGS(NUM_PHYS_REGS), .VLEN(VLEN))
-    vphys_regfile_inst (.clk(clk), .rst_n(rst_n),
-        .write_addr(vec_cdb_tag), .write_data(vec_cdb_result), .write_en(vec_cdb_valid),
+    vector_physical_register_file vphys_regfile_inst (.clk(clk), .rst_n(rst_n),
+        .write_addr0(vec_cdb0_tag), .write_data0(vec_cdb0_result), .write_en0(vec_cdb0_valid),
+        .write_addr1(vec_cdb1_tag), .write_data1(vec_cdb1_result), .write_en1(vec_cdb1_valid),
         .read_addr1(vprf_read_addr1), .read_addr2(vprf_read_addr2), .read_addr3(vprf_read_addr3),
         .read_data1(vprf_read_data1), .read_data2(vprf_read_data2), .read_data3(vprf_read_data3),
         .status_valid(vphys_reg_status),
@@ -231,7 +228,7 @@ module riscv_core_top (
     // FREE LIST (Returns freed physical registers)
     // ========================================================================
 
-    logic rob_commit_type_is_vec = (rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD || rob_commit_instr_type == `V_EXT_STORE);
+    logic rob_commit_type_is_vec = (rob_commit_instr_type == ``V_EXT_VEC || rob_commit_instr_type == ``V_EXT_LOAD || rob_commit_instr_type == ``V_EXT_STORE);
 
     logic commit_free_list = (rob_commit_valid && !rob_commit_type_is_vec);
     logic commit_vector_free_list = (rob_commit_valid && rob_commit_type_is_vec);
@@ -255,15 +252,14 @@ module riscv_core_top (
     // ========================================================================
     
     logic commit_rat = rob_commit_valid && !rob_commit_type_is_vec && (rob_commit_instr_type != `IBASE_STORE);
-    logic commit_vrat = rob_commit_valid && (rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD);
+    logic commit_vrat = rob_commit_valid && (rob_commit_instr_type == ``V_EXT_VEC || rob_commit_instr_type == ``V_EXT_LOAD);
 
     logic dispatch_src1_valid_wire = (decode_instr_type == `V_EXT_VEC) ? vphys_reg_status[rat_src1_phys] : phys_reg_status[rat_src1_phys];
     logic dispatch_src2_valid_wire = (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_STORE) ? vphys_reg_status[rat_src2_phys] : phys_reg_status[rat_src2_phys];
     logic dispatch_src1_is_vec;
     logic dispatch_src2_is_vec;
 
-    dispatch_stage #(.XLEN(XLEN), .INST_WIDTH(INST_WIDTH), .NUM_INT_REGS(NUM_INT_REGS), .NUM_PHYS_REGS(NUM_PHYS_REGS), .LSQ_TAG_WIDTH(LSQ_TAG_WIDTH))
-    dispatch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_dispatch), .flush(flush_pipeline),
+    dispatch_stage dispatch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_dispatch), .flush(flush_pipeline),
         .instr_in(decode_instr), .instr_type(decode_instr_type), .pc_in(decode_pc), 
         .predicted_branch_in(decode_predicted_branch), .predicted_target_in(decode_predicted_target), .valid_in(decode_valid),
         .free_phys_reg(free_phys_reg),
@@ -293,12 +289,7 @@ module riscv_core_top (
     // ISSUE STAGE (Encapsulating all RS and Scheduler)
     // ========================================================================
     
-    issue_stage #(
-        .XLEN(XLEN), .RS_TAG_WIDTH(6), .LSQ_TAG_WIDTH(LSQ_TAG_WIDTH),
-        .ALU_RS_SIZE(ALU_RS_SIZE), .MEM_RS_SIZE(MEM_RS_SIZE),
-        .MUL_RS_SIZE(MUL_RS_SIZE), .DIV_RS_SIZE(DIV_RS_SIZE), .VEC_RS_SIZE(VEC_RS_SIZE),
-        .MUL_LATENCY(MUL_LATENCY), .DIV_LATENCY(DIV_LATENCY)
-    ) issue_stage_inst (
+    issue_stage issue_stage_inst (
         .clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
         .dispatch_valid(dispatch_rs_alloc), .dispatch_rs_type(dispatch_rs_type),
         .dispatch_src1_tag(rat_src1_phys), .dispatch_src1_valid(dispatch_src1_valid_wire),
@@ -350,9 +341,7 @@ module riscv_core_top (
     // REG_READ STAGE (Payload/Bypass)
     // ========================================================================
     
-    reg_read_stage #(
-        .XLEN(XLEN), .VLEN(VLEN), .DLEN(DLEN), .RS_TAG_WIDTH(6), .LSQ_TAG_WIDTH(LSQ_TAG_WIDTH)
-    ) reg_read_stage_inst (
+    reg_read_stage reg_read_stage_inst (
         .clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
         .alu_issue_valid(alu_issue_valid), .alu_issue_src1_tag(alu_issue_src1_tag), .alu_issue_src2_tag(alu_issue_src2_tag),
         .alu_issue_dest_tag(alu_issue_dest_tag), .alu_issue_imm(alu_issue_imm), .alu_issue_pc(alu_issue_pc),
@@ -392,9 +381,7 @@ module riscv_core_top (
     // STAGE 4: EXECUTE (Encapsulated FUs)
     // ========================================================================
     
-    execute_stage #(.XLEN(XLEN), .VLEN(VLEN), .DLEN(DLEN), .NUM_ALU_FUS(1), .NUM_MUL_FUS(1), .NUM_DIV_FUS(1),
-        .MUL_LATENCY(MUL_LATENCY), .DIV_LATENCY(DIV_LATENCY), .LSQ_TAG_WIDTH(LSQ_TAG_WIDTH))
-    execute_inst (.clk(clk), .rst_n(rst_n),
+    execute_stage execute_inst (.clk(clk), .rst_n(rst_n),
         .flush(flush_pipeline),
         // LSQ Allocation Tunneling
         .lsq_alloc_req(dispatch_lsq_alloc), .lsq_alloc_is_store(dispatch_lsq_is_store),
@@ -434,8 +421,7 @@ module riscv_core_top (
     // There is NO Architectural Register File. Architectural state is tracked through arch_RAT
     // The ROB retiring the instruction and updating the RAT/Free List IS the commit.
     
-    reorder_buffer #(.ROB_SIZE(ROB_SIZE), .XLEN(XLEN))
-    rob_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
+    reorder_buffer rob_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
         .alloc_pc(decode_pc), // Pass PC directly from Decode for tracking
         .alloc_instr_type(decode_instr_type), .alloc_dest_reg(dispatch_dest_reg),
         .alloc_phys_reg(rat_dst_phys),
@@ -456,16 +442,17 @@ module riscv_core_top (
 
     
     // Debug tracking for Testbench (Simulates an ARF observer)
-    logic [NUM_INT_REGS-1:0][XLEN-1:0] debug_reg_file_internal;
+    logic [`NUM_INT_REGS-1:0][`XLEN-1:0] debug_reg_file_internal;
     assign debug_reg_file = debug_reg_file_internal;
     
     assign commit_read_addr_wire = rob_commit_dest_phys_reg; // Peek into PRF
 
     always @(posedge clk or negedge rst_n) begin
+        integer i;
         if (!rst_n) begin
-            for (int i=0; i<NUM_INT_REGS; i++) debug_reg_file_internal[i] <= '0;
+            for (i=0; i<`NUM_INT_REGS; i++) debug_reg_file_internal[i] <= '0;
         end else if (rob_commit_valid && (rob_commit_dest_arch_reg != 5'b0) && 
-            !(rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD || rob_commit_instr_type == `V_EXT_STORE)) begin
+        !(rob_commit_instr_type == ``V_EXT_VEC || rob_commit_instr_type == ``V_EXT_LOAD || rob_commit_instr_type == ``V_EXT_STORE)) begin
             // Grab the committed data directly from the PRF and store it purely for the TB to verify
             debug_reg_file_internal[rob_commit_dest_arch_reg] <= phys_reg_data_commit;
         end
@@ -490,7 +477,7 @@ module riscv_core_top (
         .branch_taken(branch_update_taken), .branch_update_en(branch_update_req));
     
     // Vector operand extension (since RS is 32-bit but VEU is 128-bit)
-    assign vec_op1[VLEN-1:XLEN] = '0;
-    assign vec_op2[VLEN-1:XLEN] = '0;
+    assign vec_op1[`VLEN-1:`XLEN] = '0;
+    assign vec_op2[`VLEN-1:`XLEN] = '0;
 
 endmodule

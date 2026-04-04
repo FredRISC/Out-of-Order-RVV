@@ -21,16 +21,17 @@ module vector_free_list (
     input commit_en
 );
 
-    logic [NUM_PHYS_REGS-1:0] spec_free_bits;
-    logic [NUM_PHYS_REGS-1:0] arch_free_bits;
+    logic [`NUM_PHYS_REGS-1:0] spec_free_bits;
+    logic [`NUM_PHYS_REGS-1:0] arch_free_bits;
     
     always @(*) begin
+        integer i;
         alloc_phys = 6'h0;
         alloc_valid = 1'b0;
         // Search ALL registers. v0 is not hardwired to zero!
-        for (int i = 0; i < NUM_PHYS_REGS; i++) begin
+        for (i = 0; i < `NUM_PHYS_REGS; i++) begin
             if (spec_free_bits[i]) begin
-                alloc_phys = i[5:0];
+                alloc_phys = i;
                 alloc_valid = 1'b1;
                 break;
             end
@@ -48,7 +49,7 @@ module vector_free_list (
             end
             
             if (flush) begin
-                for (int i = 0; i < NUM_PHYS_REGS; i++) begin
+                for (int i = 0; i < `NUM_PHYS_REGS; i++) begin
                     if (commit_en && i == commit_phys) // When flush and commit are both true, roll back to the latest commit state
                         spec_free_bits[i] <= 1'b0;
                     else if (commit_en && i == free_phys)

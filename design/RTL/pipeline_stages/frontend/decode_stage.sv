@@ -5,29 +5,25 @@
 
 `include "../riscv_header.sv"
 
-module decode_stage #(
-    parameter XLEN = 32,
-    parameter INST_WIDTH = 32,
-    parameter NUM_INT_REGS = 32
-) (
+module decode_stage (
     input clk,
     input rst_n,
     input flush,
     input stall,
 
     // From fetch stage
-    input [INST_WIDTH-1:0] instr_in,
-    input [XLEN-1:0] pc_in,
+    input [`INST_WIDTH-1:0] instr_in,
+    input [`XLEN-1:0] pc_in,
     input predicted_branch_in, // Tunnel from Fetch
-    input [XLEN-1:0] predicted_target_in, // Tunnel from Fetch
+    input [`XLEN-1:0] predicted_target_in, // Tunnel from Fetch
     input valid_in,
     
     // Output fields
     output reg [3:0] instr_type_out,    // Key output of this stage: instruction type for routing to appropriate reservation station
-    output reg [XLEN-1:0] pc_out,   // Pass through PC for potential use in branch target calculation or debugging
-    output reg [INST_WIDTH-1:0] instr_out, // Pass through instruction for debugging
+    output reg [`XLEN-1:0] pc_out,   // Pass through PC for potential use in branch target calculation or debugging
+    output reg [`INST_WIDTH-1:0] instr_out, // Pass through instruction for debugging
     output reg predicted_branch_out,
-    output reg [XLEN-1:0] predicted_target_out,
+    output reg [`XLEN-1:0] predicted_target_out,
     output reg valid_out    // Indicate that the output of this stage is valid
 );
 

@@ -2,7 +2,7 @@
 // vector_physical_register_file.sv - Speculative Vector Data Storage
 // ============================================================================
 // Holds SPECULATIVE VECTORS during execution.
-// 64 entries, each VLEN (128) bits wide.
+// 64 entries, each `VLEN (128) bits wide.
 
 `include "../riscv_header.sv"
 
@@ -12,26 +12,26 @@ module vector_physical_register_file (
     
     // Write port 0 (from Vector CDB 0 - Scheduled VEU)
     input [5:0] write_addr0,
-    input [VLEN-1:0] write_data0,
+    input [`VLEN-1:0] write_data0,
     input write_en0,
     
     // Write port 1 (from Vector CDB 1 - Unscheduled VLSU)
     input [5:0] write_addr1,
-    input [VLEN-1:0] write_data1,
+    input [`VLEN-1:0] write_data1,
     input write_en1,
     
     // Read ports (read operands for VEU)
     input [5:0] read_addr1,
     input [5:0] read_addr2,
-    output logic [VLEN-1:0] read_data1,
-    output logic [VLEN-1:0] read_data2,
+    output logic [`VLEN-1:0] read_data1,
+    output logic [`VLEN-1:0] read_data2,
     input [5:0] read_addr3, // Dedicated port for memory stores
-    output logic [VLEN-1:0] read_data3,
-    output logic [NUM_PHYS_REGS-1:0] status_valid, // Valid Status signals (Used for Vector RS operand ready checking)
+    output logic [`VLEN-1:0] read_data3,
+    output logic [`NUM_PHYS_REGS-1:0] status_valid, // Valid Status signals (Used for Vector RS operand ready checking)
 
     // Commit interface (read to update Arch Vector Reg)
     input [5:0] commit_read_addr,
-    output logic [VLEN-1:0] commit_read_data,
+    output logic [`VLEN-1:0] commit_read_data,
     
     // Allocation (clear valid bit)
     input [5:0] alloc_addr,
@@ -39,8 +39,8 @@ module vector_physical_register_file (
 );
 
     // Storage: 64 physical registers, each 128 bits wide
-    logic [VLEN-1:0] phys_regs [NUM_PHYS_REGS-1:0];
-    logic [NUM_PHYS_REGS-1:0] valid_bits;
+    logic [`VLEN-1:0] phys_regs [`NUM_PHYS_REGS-1:0];
+    logic [`NUM_PHYS_REGS-1:0] valid_bits;
     
     // Combinational reads
     assign read_data1 = phys_regs[read_addr1];
@@ -52,9 +52,10 @@ module vector_physical_register_file (
     assign status_valid = valid_bits;
     
     always @(posedge clk or negedge rst_n) begin
+        integer i;
         if (!rst_n) begin
-            for (int i = 0; i < NUM_PHYS_REGS; i++) begin
-                phys_regs[i] <= {VLEN{1'b0}};
+            for (i = 0; i < `NUM_PHYS_REGS; i++) begin
+                phys_regs[i] <= {`VLEN{1'b0}};
                 valid_bits[i] <= 1'b0;
             end
         end else begin

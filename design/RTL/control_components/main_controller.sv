@@ -17,14 +17,14 @@ module main_controller (
     
     // Flush interfaces
     input rob_flush_req,
-    input [XLEN-1:0] rob_flush_pc,
+    input [`XLEN-1:0] rob_flush_pc,
     
     // Control outputs
     output reg stall_fetch,
     output reg stall_decode,
     output reg stall_dispatch,
     output reg flush_pipeline,
-    output reg [XLEN-1:0] flush_target_pc,
+    output reg [`XLEN-1:0] flush_target_pc,
     
     // Pipeline mode
     output reg [1:0] pipeline_mode  // 00=reset, 01=normal, 10=stall, 11=flush
@@ -37,7 +37,7 @@ module main_controller (
             stall_decode <= 1'b0;
             stall_dispatch <= 1'b0;
             flush_pipeline <= 1'b0;
-            flush_target_pc <= {XLEN{1'b0}};
+            flush_target_pc <= {`XLEN{1'b0}};
         end else begin
             // Generate stalls based on resource availability
             if (rs_full || rob_full || lsq_full || free_list_empty) begin
