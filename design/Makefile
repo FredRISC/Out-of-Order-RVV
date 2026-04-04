@@ -8,6 +8,10 @@ VVP = vvp
 VLOG_FLAGS = -g2009
 OUTPUT = riscv_sim
 
+# Verilator settings
+VERILATOR = verilator
+VFLAGS = --binary --timing --Wno-fatal --top-module tb_riscv_core
+
 # Source files
 SOURCES = \
 	riscv_header.sv \
@@ -42,6 +46,17 @@ SOURCES = \
 .PHONY: all
 all: compile
 
+# Verilator targets
+.PHONY: verilate
+verilate:
+	@echo "Compiling RISC-V OoO Processor with Verilator..."
+	$(VERILATOR) $(VFLAGS) -I. $(SOURCES)
+
+.PHONY: sim-verilator
+sim-verilator: verilate
+	@echo "Running Verilator simulation..."
+	./obj_dir/Vtb_riscv_core
+
 # Compilation target
 .PHONY: compile
 compile: $(SOURCES)
@@ -72,12 +87,14 @@ clean:
 	rm -f $(OUTPUT)
 	rm -f *.vcd
 	rm -f *.o
+	rm -rf obj_dir
 	@echo "Clean complete"
 
 # Help target
 .PHONY: help
 help:
 	@echo "Available targets:"
+	@echo "  make sim-verilator - Compile and run using Verilator"
 	@echo "  make compile  - Compile all sources"
 	@echo "  make sim      - Compile and run simulation"
 	@echo "  make test     - Same as sim"

@@ -28,13 +28,12 @@ module free_list (
     
     // Allocate: find first free bit
     always @(*) begin
-        integer i;
         alloc_phys = 6'h0;
         alloc_valid = 1'b0;
         // Search all registers (p0 is naturally protected by initialization)
-        for (i = 0; i < `NUM_PHYS_REGS; i++) begin
+        for (int i = 0; i < `NUM_PHYS_REGS; i++) begin
             if (spec_free_bits[i]) begin
-                alloc_phys = i; // Allocate this physical register
+                alloc_phys = i[5:0]; // Allocate this physical register
                 alloc_valid = 1'b1; // Found a free physical register
                 break;
             end
@@ -43,7 +42,6 @@ module free_list (
     
     // Sequential: allocate and free
     always @(posedge clk or negedge rst_n) begin
-        integer i;
         if (!rst_n) begin
             // All phys regs 32-63 are free initially (0-31 are initially mapped to arch regs in RAT)
             spec_free_bits <= 64'hFFFFFFFF_00000000;
@@ -57,7 +55,7 @@ module free_list (
             
             // Roll Back on flush
             if (flush) begin
-                for (i = 0; i < `NUM_PHYS_REGS; i++) begin
+                for (int i = 0; i < `NUM_PHYS_REGS; i++) begin
                     if (commit_en && i == commit_phys) spec_free_bits[i] <= 1'b0; // When flush and commit are both true, roll back to the latest commit state
                     else if (commit_en && i == free_phys) spec_free_bits[i] <= 1'b1;
                     else spec_free_bits[i] <= arch_free_bits[i];

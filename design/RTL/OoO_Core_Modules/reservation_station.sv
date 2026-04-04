@@ -132,12 +132,11 @@ module reservation_station #(
     
     // Priority encoder to find first free entry
     always @(*) begin
-        integer i;
         alloc_idx = 0;
         allocatable = 1'b0;
-        for (i = 0; i < RS_SIZE; i++) begin
+        for (int i = 0; i < RS_SIZE; i++) begin
             if (!rs_entries[i].busy) begin
-                alloc_idx = i;
+                alloc_idx = i; // Implicit truncation is perfectly synthesizable
                 allocatable = 1'b1;
                 break;
             end
@@ -147,9 +146,8 @@ module reservation_station #(
     assign rs_full = !allocatable;
     
     always @(posedge clk or negedge rst_n) begin
-        integer i;
         if (!rst_n || flush) begin
-            for (i = 0; i < RS_SIZE; i++) begin
+            for (int i = 0; i < RS_SIZE; i++) begin
                 rs_entries[i].busy <= 1'b0;
                 rs_entries[i].src1_tag_val <= {`RS_TAG_WIDTH{1'b0}};
                 rs_entries[i].src2_tag_val <= {`RS_TAG_WIDTH{1'b0}};
@@ -281,8 +279,7 @@ module reservation_station #(
     // ========================================================================
     
     always @(*) begin
-        integer i;
-        for (i = 0; i < RS_SIZE; i++) begin
+        for (int i = 0; i < RS_SIZE; i++) begin
             entry_ready[i] = rs_entries[i].busy && 
                            rs_entries[i].src1_ready && 
                            rs_entries[i].src2_ready &&
@@ -292,9 +289,8 @@ module reservation_station #(
     
     // Priority encoder: select first ready entry
     always @(*) begin
-        integer i;
         issue_idx = 0;
-        for (i = 0; i < RS_SIZE; i++) begin
+        for (int i = 0; i < RS_SIZE; i = i + 1) begin
             if (entry_ready[i]) begin
                 issue_idx = i;
                 break;

@@ -85,9 +85,8 @@ module reorder_buffer (
     assign next_tail = tail_ptr + 1;
     
     always @(posedge clk or negedge rst_n) begin
-        integer i;
         if (!rst_n || flush) begin
-            for (i = 0; i < `ROB_SIZE; i++) begin
+            for (int i = 0; i < `ROB_SIZE; i++) begin
                 rob_entries[i].valid <= 1'b0;
                 rob_entries[i].instr_type <= 4'b0;
                 rob_entries[i].dest_reg <= 5'b0;
@@ -118,7 +117,7 @@ module reorder_buffer (
             end        
             
             // 2. Receiving Tags (sweeping all ROB entries to update ready bits)
-            for (i = 0; i < `ROB_SIZE; i++) begin
+            for (int i = 0; i < `ROB_SIZE; i++) begin
                 if (rob_entries[i].valid && !rob_entries[i].result_ready) begin
                     // Check domain based on instruction type
                     if (rob_entries[i].instr_type == `V_EXT_VEC || rob_entries[i].instr_type == `V_EXT_LOAD) begin
@@ -139,7 +138,7 @@ module reorder_buffer (
             
             // 3. Delayed Flush Flagging (Branch Mispredictions & LSQ Violations)
             if (alu_flush_req) begin
-                for (i = 0; i < `ROB_SIZE; i++) begin
+                for (int i = 0; i < `ROB_SIZE; i++) begin
                     if (rob_entries[i].valid && (rob_entries[i].phys_reg == alu_flush_tag)) begin
                         rob_entries[i].flush_flag <= 1'b1;
                         rob_entries[i].flush_target_pc <= alu_flush_target; // The branch resolved_target
@@ -147,7 +146,7 @@ module reorder_buffer (
                 end
             end
             if (lsq_violation_req) begin
-                for (i = 0; i < `ROB_SIZE; i++) begin
+                for (int i = 0; i < `ROB_SIZE; i++) begin
                     if (rob_entries[i].valid && (rob_entries[i].phys_reg == lsq_violation_tag)) begin
                         rob_entries[i].flush_flag <= 1'b1;
                         rob_entries[i].flush_target_pc <= rob_entries[i].pc; // Replay load at its original PC

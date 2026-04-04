@@ -1,8 +1,0 @@
-fredrick@frogrix:~/FredRISC/Out-of-Order-RVV/design/tb$ iverilog -g2012   -I ../   -I ../RTL/control_components/   -I ../RTL/functional_units/   -I ../RTL/pipeline_stages/backend/   -I ../RTL/pipeline_stages/frontend/   -I ../RTL/OoO_Core_Modules/   tb_riscv_core.sv   ../*.sv   ../RTL/*/*.sv   ../RTL/*/*/*.sv   -o sim
-../RTL/control_components/free_list.sv:39: internal error: NetProc::nex_input not implemented
-../RTL/control_components/vector_free_list.sv:36: internal error: NetProc::nex_input not implemented
-../RTL/OoO_Core_Modules/reservation_station.sv:142: internal error: NetProc::nex_input not implemented
-../RTL/OoO_Core_Modules/reservation_station.sv:153: error: A reference to a net or variable (`i') is not allowed in a constant expression.
-../RTL/OoO_Core_Modules/reservation_station.sv:153: error: Array index expressions must be constant here.
-ivl: netmisc.cc:1597: NetExpr* collapse_array_indices(Design*, NetScope*, const NetNet*, const std::__cxx11::list<index_component_t>&): Assertion `rc' failed.
-Aborted (core dumped)
