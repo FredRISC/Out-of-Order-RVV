@@ -1,6 +1,6 @@
-# FredRISC: Out-of-Order RV32IM-SubV Processor
+# ProtoRISC: Out-of-Order RV32IM-SubV Processor
 
-FredRISC is a single-issue, speculatively-renamed, Out-of-Order RISC-V processor prototype, supporting the **RV32IM** base integer instruction set alongside a tightly-coupled Vector Coprocessor implementing a targeted subset of the **Zve32x** Vector Extension.
+ProtoRISC is a single-issue, speculatively-renamed, Out-of-Order RISC-V processor prototype, supporting the **RV32IM** base integer instruction set alongside a tightly-coupled Vector Coprocessor implementing a targeted subset of the **Zve32x** Vector Extension.
 
 This project serves as a comprehensive study of OoO RISC-V architecture and a foundation for expanding to a more advanced design. This prototype utilizes a fully tag-based **Unified Scalar/Vector Datapath** and a modern **Register Alias Table (RAT) + Physical Register File (PRF)** architecture (inspired by the MIPS R10000/Alpha 21264) to achieve precise, high-performance out-of-order execution.  
 
