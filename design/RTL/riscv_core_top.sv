@@ -7,7 +7,7 @@
 // - Speculative data stored in physical_register_file
 // commit state is tracked by arch_RAT and arch_free_list
 
-`include "riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module riscv_core_top (
     input clk,
@@ -176,7 +176,8 @@ module riscv_core_top (
     
     fetch_stage fetch_inst (.clk(clk), .rst_n(rst_n), .stall(stall_fetch), .flush(flush_pipeline),
         .flush_pc(flush_target_pc_wire), .pc_out(fetch_pc), .instr_out(fetch_instr),
-        .valid_out(fetch_valid), .imem_addr(imem_addr), .imem_data(imem_data), .imem_valid(imem_valid));
+        .valid_out(fetch_valid), .imem_addr(imem_addr), .imem_data(imem_data), .imem_valid(imem_valid),
+        .predicted_branch_in(fetch_predicted_branch), .predicted_target_in(fetch_predicted_target));
 
     // ========================================================================
     // STAGE 2: DECODE
@@ -202,7 +203,8 @@ module riscv_core_top (
     // PHYSICAL REGISTER FILE (Speculative data storage)
     // ========================================================================
     
-    logic decode_instr_type_is_vec =  (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_LOAD || decode_instr_type == `V_EXT_STORE || decode_instr_type == `V_EXT_CONFIG);
+    logic decode_instr_type_is_vec;
+    assign decode_instr_type_is_vec = (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_LOAD || decode_instr_type == `V_EXT_STORE);
 
     physical_register_file phys_regfile_inst (.clk(clk), .rst_n(rst_n),
         .write_addr0(cdb0_tag), .write_data0(cdb0_result), .write_en0(cdb0_valid),
@@ -228,10 +230,13 @@ module riscv_core_top (
     // FREE LIST (Returns freed physical registers)
     // ========================================================================
 
-    logic rob_commit_type_is_vec = (rob_commit_instr_type == ``V_EXT_VEC || rob_commit_instr_type == ``V_EXT_LOAD || rob_commit_instr_type == ``V_EXT_STORE);
+    logic rob_commit_type_is_vec;
+    assign rob_commit_type_is_vec = (rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD || rob_commit_instr_type == `V_EXT_STORE);
 
-    logic commit_free_list = (rob_commit_valid && !rob_commit_type_is_vec);
-    logic commit_vector_free_list = (rob_commit_valid && rob_commit_type_is_vec);
+    logic commit_free_list;
+    assign commit_free_list = (rob_commit_valid && !rob_commit_type_is_vec);
+    logic commit_vector_free_list;
+    assign commit_vector_free_list = (rob_commit_valid && rob_commit_type_is_vec);
 
     free_list free_list_inst (.clk(clk), .rst_n(rst_n), .flush(flush_pipeline),
         .alloc_req(dispatch_valid && !decode_instr_type_is_vec), .alloc_phys(free_phys_reg),
@@ -251,11 +256,15 @@ module riscv_core_top (
     // STAGE 3: DISPATCH
     // ========================================================================
     
-    logic commit_rat = rob_commit_valid && !rob_commit_type_is_vec && (rob_commit_instr_type != `IBASE_STORE);
-    logic commit_vrat = rob_commit_valid && (rob_commit_instr_type == ``V_EXT_VEC || rob_commit_instr_type == ``V_EXT_LOAD);
+    logic commit_rat;
+    assign commit_rat = rob_commit_valid && !rob_commit_type_is_vec && (rob_commit_instr_type != `IBASE_STORE);
+    logic commit_vrat;
+    assign commit_vrat = rob_commit_valid && (rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD);
 
-    logic dispatch_src1_valid_wire = (decode_instr_type == `V_EXT_VEC) ? vphys_reg_status[rat_src1_phys] : phys_reg_status[rat_src1_phys];
-    logic dispatch_src2_valid_wire = (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_STORE) ? vphys_reg_status[rat_src2_phys] : phys_reg_status[rat_src2_phys];
+    logic dispatch_src1_valid_wire;
+    assign dispatch_src1_valid_wire = (decode_instr_type == `V_EXT_VEC) ? vphys_reg_status[rat_src1_phys] : phys_reg_status[rat_src1_phys];
+    logic dispatch_src2_valid_wire;
+    assign dispatch_src2_valid_wire = (decode_instr_type == `V_EXT_VEC || decode_instr_type == `V_EXT_STORE) ? vphys_reg_status[rat_src2_phys] : phys_reg_status[rat_src2_phys];
     logic dispatch_src1_is_vec;
     logic dispatch_src2_is_vec;
 
@@ -306,7 +315,7 @@ module riscv_core_top (
         .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
         .vec_cdb0_tag(vec_cdb0_tag), .vec_cdb0_valid(vec_cdb0_valid),
         .vec_cdb1_tag(vec_cdb1_tag), .vec_cdb1_valid(vec_cdb1_valid),
-        .mem_fu_ready(1'b1), // Because hazard_detection.sv strictly prevents Dispatch if the LSQ is full; Essentially issuing to ALU (AGU)
+        .mem_fu_ready(1'b1), 
         .div_fu_ready(1'b1), // Replace with actual DIV busy signal if unpipelined
         .vec_fu_ready(1'b1), // VEU is one cycle now; Need optimization for high-latency operations like VMUL/VDIV
         .alu_rs_full(alu_rs_full), .mem_rs_full(mem_rs_full),
@@ -405,9 +414,9 @@ module riscv_core_top (
         .dmem_write_addr(dmem_write_addr), .dmem_write_data(dmem_write_data), 
         .dmem_write_en(dmem_write_en), .dmem_be(dmem_be),
         .dmem_write_ready(dmem_write_ready), // Default to 1'b1 in testbench if no complex memory
-        .commit_lsq(rob_commit_valid && (rob_commit_instr_type == `IBASE_STORE || rob_commit_instr_type == `IBASE_LOAD)),
+        .commit_lsq(rob_commit_valid && (rob_commit_instr_type == `IBASE_STORE || rob_commit_instr_type == `IBASE_LOAD || rob_commit_instr_type == `V_EXT_STORE || rob_commit_instr_type == `V_EXT_LOAD)),
         .alu_flush_req(alu_flush_req), .alu_flush_tag(alu_flush_tag), .alu_flush_target(alu_flush_target),
-        .lsq_flush_req(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
+        .lsq_flush(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
         .branch_update_req(branch_update_req), .branch_update_pc(branch_update_pc), .branch_update_target(branch_update_target), .branch_update_taken(branch_update_taken),
         .cdb0_result(cdb0_result), .cdb0_tag(cdb0_tag), .cdb0_valid(cdb0_valid),
         .cdb1_result(cdb1_result), .cdb1_tag(cdb1_tag), .cdb1_valid(cdb1_valid),
@@ -434,25 +443,25 @@ module riscv_core_top (
         .alu_flush_req(alu_flush_req), .alu_flush_tag(alu_flush_tag), .alu_flush_target(alu_flush_target),
         .lsq_violation_req(lsq_flush_req), .lsq_violation_tag(lsq_violation_tag),
         .commit_valid(rob_commit_valid), .commit_instr_type(rob_commit_instr_type),
-        .commit_dest_arch(rob_commit_dest_arch_reg),
+        .commit_dest_reg(rob_commit_dest_arch_reg),
         .commit_dest_phys(rob_commit_dest_phys_reg),
         .commit_old_phys(rob_commit_old_phys_reg),
         .commit_vtype(rob_commit_vtype),
         .rob_flush_req(rob_flush_req), .rob_flush_pc(rob_flush_pc));
+
+    assign commit_read_addr_wire = rob_commit_dest_phys_reg; // Peek into PRF
 
     
     // Debug tracking for Testbench (Simulates an ARF observer)
     logic [`NUM_INT_REGS-1:0][`XLEN-1:0] debug_reg_file_internal;
     assign debug_reg_file = debug_reg_file_internal;
     
-    assign commit_read_addr_wire = rob_commit_dest_phys_reg; // Peek into PRF
-
     always @(posedge clk or negedge rst_n) begin
         integer i;
         if (!rst_n) begin
             for (i=0; i<`NUM_INT_REGS; i++) debug_reg_file_internal[i] <= '0;
         end else if (rob_commit_valid && (rob_commit_dest_arch_reg != 5'b0) && 
-        !(rob_commit_instr_type == ``V_EXT_VEC || rob_commit_instr_type == ``V_EXT_LOAD || rob_commit_instr_type == ``V_EXT_STORE)) begin
+        !(rob_commit_instr_type == `V_EXT_VEC || rob_commit_instr_type == `V_EXT_LOAD || rob_commit_instr_type == `V_EXT_STORE)) begin
             // Grab the committed data directly from the PRF and store it purely for the TB to verify
             debug_reg_file_internal[rob_commit_dest_arch_reg] <= phys_reg_data_commit;
         end
@@ -476,8 +485,5 @@ module riscv_core_top (
         .resolved_pc(branch_update_pc), .resolved_target(branch_update_target),
         .branch_taken(branch_update_taken), .branch_update_en(branch_update_req));
     
-    // Vector operand extension (since RS is 32-bit but VEU is 128-bit)
-    assign vec_op1[`VLEN-1:`XLEN] = '0;
-    assign vec_op2[`VLEN-1:`XLEN] = '0;
 
 endmodule

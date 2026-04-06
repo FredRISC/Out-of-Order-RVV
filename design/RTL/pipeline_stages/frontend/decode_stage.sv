@@ -3,7 +3,7 @@
 // ============================================================================
 // Decodes instruction opcode, extracts fields, and routes to appropriate unit
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module decode_stage (
     input clk,

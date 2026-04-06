@@ -4,7 +4,7 @@
 // Tracks vl (Vector Length) and vtype (Vector Type)
 // Features speculative updating for dispatch dependencies and rollback on flush.
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module vector_csr (
     input clk,

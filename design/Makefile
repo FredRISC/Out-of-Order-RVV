@@ -1,6 +1,6 @@
-// ============================================================================
-// Makefile - Compilation and Simulation Script
-// ============================================================================
+# ============================================================================
+# Makefile - Compilation and Simulation Script
+# ============================================================================
 
 # Compiler settings
 IVERILOG = iverilog
@@ -10,37 +10,40 @@ OUTPUT = riscv_sim
 
 # Verilator settings
 VERILATOR = verilator
-VFLAGS = --binary --timing --Wno-fatal --top-module tb_riscv_core
+VFLAGS = --binary --timing --Wno-fatal --top-module tb_disambiguation
 
 # Source files
 SOURCES = \
-	riscv_header.sv \
-	fetch_stage_SEPARATE.sv \
-	decode_stage_SEPARATE.sv \
-	dispatch_stage.sv \
-	execute_stage.sv \
-	writeback_stage.sv \
-	commit_stage.sv \
-	exception_handler.sv \
-	main_controller.sv \
-	forwarding_logic.sv \
-	reservation_station.sv \
-	reorder_buffer.sv \
-	load_store_queue.sv \
-	alu.sv \
-	multiplier.sv \
-	divider.sv \
-	vector_execution_unit.sv \
-	vector_lane.sv \
-	register_file.sv \
-	vector_register_file.sv \
-	rename_table.sv \
-	free_list.sv \
-	common_data_bus.sv \
-	branch_predictor.sv \
-	hazard_detection.sv \
-	riscv_core_top.sv \
-	tb_riscv_core.sv
+	RTL/riscv_header.sv \
+	RTL/pipeline_stages/frontend/fetch_stage.sv \
+	RTL/pipeline_stages/frontend/decode_stage.sv \
+	RTL/pipeline_stages/frontend/dispatch_stage.sv \
+	RTL/pipeline_stages/backend/issue_stage.sv \
+	RTL/pipeline_stages/backend/reg_read_stage.sv \
+	RTL/pipeline_stages/backend/execute_stage.sv \
+	RTL/OoO_Core_Modules/reservation_station.sv \
+	RTL/OoO_Core_Modules/reorder_buffer.sv \
+	RTL/OoO_Core_Modules/load_store_queue.sv \
+	RTL/OoO_Core_Modules/issue_scheduler.sv \
+	RTL/functional_units/alu.sv \
+	RTL/functional_units/multiplier.sv \
+	RTL/functional_units/divider.sv \
+	RTL/functional_units/vector_execution_unit.sv \
+	RTL/functional_units/vector_lane.sv \
+	RTL/control_components/physical_register_file.sv \
+	RTL/control_components/vector_physical_register_file.sv \
+	RTL/control_components/rat.sv \
+	RTL/control_components/vector_rat.sv \
+	RTL/control_components/free_list.sv \
+	RTL/control_components/vector_free_list.sv \
+	RTL/control_components/branch_predictor.sv \
+	RTL/control_components/main_controller.sv \
+	RTL/control_components/vector_csr.sv \
+	RTL/riscv_core_top.sv \
+	tb/tb_LsqForwarding_vadd.sv \
+	tb/tb_disambiguation.sv \
+	tb/tb_vector_mem.sv \
+
 
 # Default target
 .PHONY: all
@@ -55,7 +58,7 @@ verilate:
 .PHONY: sim-verilator
 sim-verilator: verilate
 	@echo "Running Verilator simulation..."
-	./obj_dir/Vtb_riscv_core
+	./obj_dir/Vtb_disambiguation
 
 # Compilation target
 .PHONY: compile

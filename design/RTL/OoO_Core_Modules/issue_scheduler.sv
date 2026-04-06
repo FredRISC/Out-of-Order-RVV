@@ -4,7 +4,7 @@
 // Prevents CDB collisions by tracking the future availability of the CDB.
 // Grants issue requests only if the CDB will be free when the FU finishes.
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module issue_scheduler (
     input clk,

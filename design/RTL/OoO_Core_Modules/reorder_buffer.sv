@@ -3,7 +3,7 @@
 // ============================================================================
 // Maintains in-order instruction tracking for precise exceptions and commits
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module reorder_buffer (
     input clk,
@@ -120,7 +120,7 @@ module reorder_buffer (
             for (int i = 0; i < `ROB_SIZE; i++) begin
                 if (rob_entries[i].valid && !rob_entries[i].result_ready) begin
                     // Check domain based on instruction type
-                    if (rob_entries[i].instr_type == `V_EXT_VEC || rob_entries[i].instr_type == `V_EXT_LOAD) begin
+                    if (rob_entries[i].instr_type == `V_EXT_VEC || rob_entries[i].instr_type == `V_EXT_LOAD || rob_entries[i].instr_type == `V_EXT_STORE) begin
                         if (vec_result0_valid && (rob_entries[i].phys_reg == vec_result0_tag)) begin
                             rob_entries[i].result_ready <= 1'b1;
                         end else if (vec_result1_valid && (rob_entries[i].phys_reg == vec_result1_tag)) begin

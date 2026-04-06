@@ -8,7 +8,7 @@
 // - CDB arbitration inside (not in top module)
 // - Flexible number of FUs per type (parameterized)
 
-`include "riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module execute_stage (
     input clk,
@@ -162,10 +162,14 @@ module execute_stage (
                 .valid_out(alu_valids[i])
             );
             
+            // Local pipeline for tag since ALU module wasn't modified to pass it through
+            reg [5:0] alu_tag_pipe [`ALU_LATENCY:0]; 
             always @(posedge clk) begin
-                if (alu_valids[i])
-                    alu_tags[i] <= alu_tag;
+                if (alu_valid) alu_tag_pipe[0] <= alu_tag;
+                for (int j = 1; j <= `ALU_LATENCY; j = j + 1) alu_tag_pipe[j] <= alu_tag_pipe[j-1];
             end
+            
+            assign alu_tags[i] = (`ALU_LATENCY > 0) ? alu_tag_pipe[`ALU_LATENCY-1] : alu_tag;
         end
     endgenerate
 
@@ -184,13 +188,11 @@ module execute_stage (
                 .mul_type(mul_operation[1:0]),
                 .product_low(mul_results[i]),
                 .product_high(),
-                .valid_out(mul_valids[i])
+                .valid_out(mul_valids[i]),
+                .tag_in(mul_tag),
+                .tag_out(mul_tags[i])
             );
             
-            always @(posedge clk) begin
-                if (mul_valids[i])
-                    mul_tags[i] <= mul_tag;
-            end
         end
     endgenerate
 
@@ -209,13 +211,11 @@ module execute_stage (
                 .div_type(div_operation[1:0]),
                 .quotient(div_results[i]),
                 .remainder(),
-                .valid_out(div_valids[i])
+                .valid_out(div_valids[i]),
+                .tag_in(div_tag),
+                .tag_out(div_tags[i])
             );
             
-            always @(posedge clk) begin
-                if (div_valids[i])
-                    div_tags[i] <= div_tag;
-            end
         end
     endgenerate
 
@@ -255,7 +255,7 @@ module execute_stage (
 
         // Execute Interface
         .exe_addr(agu_addr),
-        .exe_data(mem_op2[`XLEN-1:0]), // TRUNCATED temporarily until VLSU is implemented
+        .exe_data(mem_op2), // Un-truncated to support full 128-bit Vector Stores
         .exe_lsq_tag(mem_lsq_tag),
         .exe_vl(mem_vl),
         .exe_is_strided(exe_is_strided),
@@ -309,17 +309,11 @@ module execute_stage (
         .vec_valid(vec_valid),
         .vec_result(veu_result),
         .vec_result_valid(vec_result_valid),
-        .vreg_rd_addr(5'b0),
-        .vreg_rd_data(),
-        .vreg_wr_addr(5'b0),
-        .vreg_wr_data(0),
-        .vreg_wr_en(1'b0)
+        .tag_in(vec_tag),
+        .tag_out(vec_result_tag),
+        .cdb_granted(1'b1),
+        .vec_fu_ready()
     );
-    
-    always @(posedge clk) begin
-        if (vec_result_valid)
-            vec_result_tag <= vec_tag;
-    end
 
     // ========================================================================
     // Result Selection From Each FU Type (Priority Encoding)

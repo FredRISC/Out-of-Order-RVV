@@ -5,7 +5,7 @@
 // Results from functional units written here via CDB
 // This is separate from architectural registers!
 
-`include "riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module physical_register_file (
     input clk,
@@ -39,10 +39,10 @@ module physical_register_file (
     logic [`XLEN-1:0] phys_regs [`NUM_PHYS_REGS-1:0];
     logic [`NUM_PHYS_REGS-1:0] valid_bits;
     
-    // Combinational reads for all 8 ports
+    // Combinational reads for all 10 ports
     always @(*) begin
         integer i;
-        for (i = 0; i < 8; i++) begin
+        for (i = 0; i < 10; i++) begin
             read_datas[i] = phys_regs[read_addrs[i]];
         end
     end

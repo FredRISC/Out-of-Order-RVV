@@ -3,7 +3,7 @@
 // ============================================================================
 // Executes element-wise operations for one 32-bit element
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module vector_lane (
     input clk,

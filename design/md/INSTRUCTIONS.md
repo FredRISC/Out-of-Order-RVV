@@ -98,6 +98,22 @@ REMU:   func3=111  (result = rs1 % rs2 unsigned remainder)
 
 ## RVV - Vector Extension Subset
 
+### Configuration Overview
+- **Vector Registers**: v0-v31 (32 registers)
+- **VLEN**: 128 bits (vector register width)
+- **VLMAX**: 16 elements (for 8-bit elements; scales with element width)
+- **ELEN**: 32 bits (maximum element width)
+- **Lanes**: 4 parallel 32-bit execution lanes
+
+```
+Each vector register (128 bits):
+┌────────────────────────────────────────────────────────────┐
+│ Element 3  │ Element 2  │ Element 1  │ Element 0          │
+│ [127:96]   │ [95:64]    │ [63:32]    │ [31:0]            │
+└────────────────────────────────────────────────────────────┘
+4 lanes × 32-bit = 128 bits total
+```
+
 ### Vector Configuration
 ```
 VSETVLI rd, rs1, vtypei
@@ -127,13 +143,6 @@ VSRA.VV:  func3=1011 (shift right arithmetic)
 ```
 VLE32.V vd, (rs1)      ; Load 32-bit elements
 VSE32.V vs3, (rs1)     ; Store 32-bit elements
-```
-
-### Vector Reductions
-```
-VREDSUM.VS vd, vs2, vs1    ; Sum reduction
-VREDMAX.VS vd, vs2, vs1    ; Max reduction
-VREDMIN.VS vd, vs2, vs1    ; Min reduction
 ```
 
 ---
@@ -181,4 +190,3 @@ MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU
 VSETVLI, VADD, VSUB, VMUL, VDIV, VAND, VOR, VXOR, shifts, reductions, load/store
 
 **Total: ~50 instructions supported**
-

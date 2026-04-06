@@ -4,7 +4,7 @@
 // Latency: `DIV_LATENCY (default 6 cycles)
 // Supports: DIV, DIVU, REM, REMU
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module divider (
     input clk,
@@ -17,7 +17,9 @@ module divider (
     
     output reg [`XLEN-1:0] quotient,
     output reg [`XLEN-1:0] remainder,
-    output reg valid_out
+    output reg valid_out,
+    input [5:0] tag_in,
+    output reg [5:0] tag_out
 );
 
     // Pipeline stages
@@ -25,6 +27,7 @@ module divider (
     reg [`XLEN-1:0] r_pipe [`DIV_LATENCY-1:0];
     reg stage_valid [`DIV_LATENCY-1:0];
     reg [1:0] div_type_pipe [`DIV_LATENCY-1:0];
+    reg [5:0] tag_pipe [`DIV_LATENCY-1:0];
     
     wire is_signed = ~div_type[0];
     
@@ -66,6 +69,7 @@ module divider (
                 r_pipe[i] <= 0;
                 stage_valid[i] <= 1'b0;
                 div_type_pipe[i] <= 2'b0;
+                tag_pipe[i] <= 6'b0;
             end
         end else begin
             // Stage 0: Latch the combinational result
@@ -74,6 +78,7 @@ module divider (
                 r_pipe[0] <= r_comb;
                 stage_valid[0] <= 1'b1;
                 div_type_pipe[0] <= div_type;
+                tag_pipe[0] <= tag_in;
             end else begin
                 stage_valid[0] <= 1'b0;
             end
@@ -84,6 +89,7 @@ module divider (
                 r_pipe[i] <= r_pipe[i-1];
                 stage_valid[i] <= stage_valid[i-1];
                 div_type_pipe[i] <= div_type_pipe[i-1];
+                tag_pipe[i] <= tag_pipe[i-1];
             end
         end
     end
@@ -91,6 +97,7 @@ module divider (
     // Output Routing (Mux the quotient or remainder based on requested instruction)
     always @(*) begin
         valid_out = stage_valid[`DIV_LATENCY-1];
+        tag_out = tag_pipe[`DIV_LATENCY-1];
         
         if (div_type_pipe[`DIV_LATENCY-1][1]) begin 
             // bit 1 is high for REM / REMU

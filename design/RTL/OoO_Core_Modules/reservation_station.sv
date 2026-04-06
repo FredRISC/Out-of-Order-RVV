@@ -5,7 +5,7 @@
 // Holds instructions waiting for operands and executes when ready.
 // Critical Path: Priority encoder selecting ready entry -> issue_scheduler grant -> execute_valid assertion
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module reservation_station #(
     parameter RS_SIZE = 8
@@ -136,7 +136,7 @@ module reservation_station #(
         allocatable = 1'b0;
         for (int i = 0; i < RS_SIZE; i++) begin
             if (!rs_entries[i].busy) begin
-                alloc_idx = i; // Implicit truncation is perfectly synthesizable
+                alloc_idx = i[$clog2(RS_SIZE)-1:0];
                 allocatable = 1'b1;
                 break;
             end
@@ -223,7 +223,7 @@ module reservation_station #(
             end
 
             // 3. Update waiting entries using buffered CDB tags
-            for (i = 0; i < RS_SIZE; i++) begin // Cycle N+1
+            for (int i = 0; i < RS_SIZE; i++) begin // Cycle N+1
                 if (rs_entries[i].busy) begin
                     // Handle Src1 Snooping
                     if (rs_entries[i].src1_is_vec) begin
@@ -290,9 +290,9 @@ module reservation_station #(
     // Priority encoder: select first ready entry
     always @(*) begin
         issue_idx = 0;
-        for (int i = 0; i < RS_SIZE; i = i + 1) begin
+        for (int i = 0; i < RS_SIZE; i++) begin
             if (entry_ready[i]) begin
-                issue_idx = i;
+                issue_idx = i[$clog2(RS_SIZE)-1:0];
                 break;
             end
         end

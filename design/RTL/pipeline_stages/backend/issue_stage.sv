@@ -4,7 +4,7 @@
 // Holds instructions until their operands are ready on the CDB.
 // Issues tags (not data) to the RegRead stage.
 
-`include "../../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module issue_stage (
     input clk,
@@ -147,7 +147,8 @@ module issue_stage (
         .issue_imm(alu_issue_imm), .issue_pc(alu_issue_pc), 
         .issue_predicted_branch(alu_issue_predicted_branch), .issue_predicted_target(alu_issue_predicted_target),
         .execute_op(alu_issue_op), 
-        .execute_valid(alu_issue_valid), .rs_full(alu_rs_full), .assigned_tag(alu_issue_dest_tag)
+        .execute_valid(alu_issue_valid), .rs_full(alu_rs_full), .assigned_tag(alu_issue_dest_tag),
+        .issue_use_vl(), .issue_vl_tag(), .issue_vtype(), .execute_lsq_tag()
     );
 
     reservation_station #(`MEM_RS_SIZE) mem_rs_inst (
@@ -166,7 +167,9 @@ module issue_stage (
         .issue_src1_tag(mem_issue_src1_tag), .issue_src2_tag(mem_issue_src2_tag),
         .issue_use_rs1(mem_issue_use_rs1), .issue_use_rs2(mem_issue_use_rs2), .issue_use_pc(), .issue_use_vl(mem_issue_use_vl),
         .issue_imm(mem_issue_imm), .issue_vl_tag(mem_issue_vl_tag), .execute_op(mem_issue_op), .execute_lsq_tag(mem_issue_lsq_tag),
-        .execute_valid(mem_issue_valid), .rs_full(mem_rs_full), .assigned_tag(mem_issue_dest_tag)
+        .execute_valid(mem_issue_valid), .rs_full(mem_rs_full), .assigned_tag(mem_issue_dest_tag),
+        .predicted_branch_in(1'b0), .predicted_target_in(32'b0),
+        .issue_vtype(), .issue_pc(), .issue_predicted_branch(), .issue_predicted_target()
     );
 
     reservation_station #(`MUL_RS_SIZE) mul_rs_inst 
@@ -184,7 +187,10 @@ module issue_stage (
         .vec_cdb0_tag(vec_cdb0_tag), .vec_cdb0_valid(vec_cdb0_valid), .vec_cdb1_tag(vec_cdb1_tag), .vec_cdb1_valid(vec_cdb1_valid),
         .issue_req(req_mul), .issue_grant(grant_mul),
         .issue_src1_tag(mul_issue_src1_tag), .issue_src2_tag(mul_issue_src2_tag),
-        .execute_op(mul_issue_op), .execute_valid(mul_issue_valid), .rs_full(mul_rs_full), .assigned_tag(mul_issue_dest_tag)
+        .execute_op(mul_issue_op), .execute_valid(mul_issue_valid), .rs_full(mul_rs_full), .assigned_tag(mul_issue_dest_tag),
+        .predicted_branch_in(1'b0), .predicted_target_in(32'b0),
+        .issue_use_rs1(), .issue_use_rs2(), .issue_use_pc(), .issue_use_vl(), .issue_vl_tag(),
+        .issue_imm(), .issue_vtype(), .issue_pc(), .issue_predicted_branch(), .issue_predicted_target(), .execute_lsq_tag()
     );
 
     reservation_station #(`DIV_RS_SIZE) div_rs_inst (
@@ -201,7 +207,10 @@ module issue_stage (
         .vec_cdb0_tag(vec_cdb0_tag), .vec_cdb0_valid(vec_cdb0_valid), .vec_cdb1_tag(vec_cdb1_tag), .vec_cdb1_valid(vec_cdb1_valid),
         .issue_req(), .issue_grant(div_fu_ready), // Unscheduled bus
         .issue_src1_tag(div_issue_src1_tag), .issue_src2_tag(div_issue_src2_tag),
-        .execute_op(div_issue_op), .execute_valid(div_issue_valid), .rs_full(div_rs_full), .assigned_tag(div_issue_dest_tag)
+        .execute_op(div_issue_op), .execute_valid(div_issue_valid), .rs_full(div_rs_full), .assigned_tag(div_issue_dest_tag),
+        .predicted_branch_in(1'b0), .predicted_target_in(32'b0),
+        .issue_use_rs1(), .issue_use_rs2(), .issue_use_pc(), .issue_use_vl(), .issue_vl_tag(),
+        .issue_imm(), .issue_vtype(), .issue_pc(), .issue_predicted_branch(), .issue_predicted_target(), .execute_lsq_tag()
     );
 
     reservation_station #(`VEC_RS_SIZE) vec_rs_inst (
@@ -219,7 +228,10 @@ module issue_stage (
         .issue_req(), .issue_grant(vec_fu_ready), // Unscheduled bus
         .issue_src1_tag(vec_issue_src1_tag), .issue_src2_tag(vec_issue_src2_tag), .issue_use_vl(vec_issue_use_vl),
         .issue_vl_tag(vec_issue_vl_tag), .issue_vtype(vec_issue_vtype),
-        .execute_op(vec_issue_op), .execute_valid(vec_issue_valid), .rs_full(vec_rs_full), .assigned_tag(vec_issue_dest_tag)
+        .execute_op(vec_issue_op), .execute_valid(vec_issue_valid), .rs_full(vec_rs_full), .assigned_tag(vec_issue_dest_tag),
+        .predicted_branch_in(1'b0), .predicted_target_in(32'b0),
+        .issue_use_rs1(), .issue_use_rs2(), .issue_use_pc(), .issue_imm(), .issue_pc(),
+        .issue_predicted_branch(), .issue_predicted_target(), .execute_lsq_tag()
     );
 
     // ========================================================================

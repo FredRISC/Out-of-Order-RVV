@@ -4,7 +4,7 @@
 // Focuses on self-checking the ALU PRF bypass and LSQ Store-to-Load Forwarding
 
 `timescale 1ns/1ps
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module tb_riscv_core;
 
@@ -100,16 +100,20 @@ module tb_riscv_core;
         #20 rst_n = 1; // Release reset
         
         // --- WHITE-BOX TEST SETUP: Mock Vector Registers ---
-        // Because we don't have vector memory loads in our test program yet,
-        // we use "backdoor access" to inject data directly into physical p1 and p2.
-        // This proves the Vector Execution Unit does the math correctly!
-        dut.vphys_regfile_inst.phys_regs[1] = 128'h00000004_00000003_00000002_00000001; // v1
-        dut.vphys_regfile_inst.phys_regs[2] = 128'h00000010_00000010_00000010_00000010; // v2
-        dut.vphys_regfile_inst.valid_bits[1] = 1'b1;
-        dut.vphys_regfile_inst.valid_bits[2] = 1'b1;
+        begin
+            logic [5:0] v1_phys_idx, v2_phys_idx;
+            // Peek into the RAT to find out where architectural v1 and v2 were actually mapped!
+            v1_phys_idx = dut.dispatch_inst.vector_rat_inst.arch_rat[1];
+            v2_phys_idx = dut.dispatch_inst.vector_rat_inst.arch_rat[2];
+            
+            dut.vphys_regfile_inst.phys_regs[v1_phys_idx] = 128'h00000004_00000003_00000002_00000001; // v1
+            dut.vphys_regfile_inst.phys_regs[v2_phys_idx] = 128'h00000010_00000010_00000010_00000010; // v2
+            dut.vphys_regfile_inst.valid_bits[v1_phys_idx] = 1'b1;
+            dut.vphys_regfile_inst.valid_bits[v2_phys_idx] = 1'b1;
+        end
 
-        // Let the pipeline run for 30 cycles
-        #300;
+        // Let the pipeline run for 80 cycles (To ensure VEU completes)
+        #800;
         
         $display("\n--- TEST 1: Store-to-Load Forwarding ---");
         $display("x1 (Store Data) : %0d", debug_reg_file[1]);
@@ -148,6 +152,44 @@ module tb_riscv_core;
 
         $display("==================================================");
         $finish;
+    end
+
+    // ========================================================================
+    // PIPELINE TRACE CHECKLIST (Zero-in on the Forwarding Path)
+    // ========================================================================
+    integer cycle = 0;
+    always @(posedge clk) begin
+        if (rst_n) cycle++;
+        
+        // 0. Check Dispatch and Renaming (White-box into RAT)
+        if (dut.dispatch_valid) begin
+            $display("[Cycle %0d] [DISPATCH] PC: %0d | rd: x%0d->p%0d | rs1: x%0d->p%0d (Rdy:%b) | rs2: x%0d->p%0d (Rdy:%b)",
+                     cycle, dut.decode_pc, 
+                     dut.dispatch_dest_reg, dut.rat_dst_phys,
+                     dut.decode_instr[19:15], dut.rat_src1_phys, dut.dispatch_src1_valid_wire,
+                     dut.decode_instr[24:20], dut.rat_src2_phys, dut.dispatch_src2_valid_wire);
+        end
+
+        // 0.5 Check CDB Broadcasts (When do registers actually become ready?)
+        if (dut.cdb0_valid) $display("[Cycle %0d] [CDB0]     Broadcast p%0d = %0d", cycle, dut.cdb0_tag, dut.cdb0_result);
+        if (dut.cdb1_valid) $display("[Cycle %0d] [CDB1]     Broadcast p%0d = %0d", cycle, dut.cdb1_tag, dut.cdb1_result);
+        if (dut.vec_cdb0_valid) $display("[Cycle %0d] [V-CDB0] Broadcast p%0d", cycle, dut.vec_cdb0_tag);
+
+        // 1. Check if SW executed
+        if (dut.execute_inst.mem_valid && dut.execute_inst.exe_is_store) 
+            $display("[Cycle %0d] [EXECUTE] SW Calculated Addr: %0d, Store Data: %0d", cycle, dut.execute_inst.agu_addr, dut.execute_inst.mem_op2);
+            
+        // 2. Check if LW executed
+        if (dut.execute_inst.mem_valid && dut.execute_inst.exe_is_load) 
+            $display("[Cycle %0d] [EXECUTE] LW Calculated Addr: %0d", cycle, dut.execute_inst.agu_addr);
+            
+        // 3. Check LSQ Forwarding Trigger
+        if (dut.execute_inst.lsq_inst.forwarding_valid) 
+            $display("[Cycle %0d] [LSQ] Forwarding Triggered! Data grabbed: %0d", cycle, dut.execute_inst.lsq_inst.forwarded_data);
+            
+        // 4. Check LSQ Broadcast
+        if (dut.execute_inst.lsq_inst.lsq_out_valid) 
+            $display("[Cycle %0d] [CDB] LSQ Broadcast! Phys Tag: p%0d, Data: %0d", cycle, dut.execute_inst.lsq_inst.cdb_phys_tag_out, dut.execute_inst.lsq_inst.lsq_data_out);
     end
 
 endmodule

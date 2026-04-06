@@ -3,7 +3,7 @@
 // ============================================================================
 // Retrieves instructions from instruction memory and manages program counter
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module fetch_stage (
     input clk,
@@ -23,8 +23,9 @@ module fetch_stage (
     input imem_valid
 );
 
-    reg [`XLEN-1:0] pc_current;
-    
+    logic [`XLEN-1:0] pc_current;
+    logic [`XLEN-1:0] pc_next;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             // On reset, initialize PC to 0 and invalidate output
@@ -34,23 +35,23 @@ module fetch_stage (
             // On flush, update PC to requested target and invalidate output.
             // This will cause the target instruction to be fetched in the next cycle.
             pc_current <= flush_pc;
-            valid_out <= 1'b1;
+            valid_out <= 1'b0;
         end else if (!stall && imem_valid) begin
             // Fetch new instruction if not stalled and instruction memory is valid
             instr_out <= imem_data;
             pc_out <= pc_current;
             valid_out <= 1'b1;
-            
-            // Use predictor to determine next PC
-            if (predicted_branch_in)
-                pc_current <= predicted_target_in;
-            else
-                pc_current <= pc_current + 32'h4;
+            //update pc
+            pc_current <= pc_next;
         end
     end
     
     //Interface Decoupling and Reserved for potential Address Translation (virtual to physical)
-    always @(*) 
+    always @(*) begin
+        // Read from instruction memory (assuming Havard)
         imem_addr = pc_current;
-
+        // Use predictor to determine next PC
+        pc_next = predicted_branch_in ? predicted_target_in : pc_current + 32'h4; 
+    end
+    
 endmodule

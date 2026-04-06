@@ -5,7 +5,7 @@
 // prepare alu_op and immediate values for execution. Also generates control signals for RS, ROB, and LSQ allocation.
 // Datapath (Decode -> Dispatch (RAT) -> PRF -> Dispatch (Encapsulation) -> RS)
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module dispatch_stage (
     input clk,
@@ -100,14 +100,19 @@ module dispatch_stage (
     // Sign-extend immediate
     logic [`XLEN-1:0] imm_extended;
 
+    logic is_vec_arith;
+    assign is_vec_arith = (instr_type == `V_EXT_VEC);
+    logic is_vec_load;
+    assign is_vec_load = (instr_type == `V_EXT_LOAD);
+    logic is_vec_store;
+    assign is_vec_store = (instr_type == `V_EXT_STORE);
+    logic is_vec_config;
+    assign is_vec_config = (instr_type == `V_EXT_CONFIG);
 
-    logic is_vec_arith = (instr_type == `V_EXT_VEC);
-    logic is_vec_load = (instr_type == `V_EXT_LOAD);
-    logic is_vec_store = (instr_type == `V_EXT_STORE);
-    logic is_vec_config = (instr_type == `V_EXT_CONFIG);
-
-    logic is_OPIVI = (funct3 == 3'b011);
-    logic is_OPIVV = (funct3 == 3'b000); 
+    logic is_OPIVI;
+    assign is_OPIVI = (funct3 == 3'b011);
+    logic is_OPIVV;
+    assign is_OPIVV = (funct3 == 3'b000); 
 
     // Extract current Vector Configuration locally
     logic [2:0] current_sew;
@@ -125,6 +130,7 @@ module dispatch_stage (
     // Determine if RS1 is used
     logic use_rs1;
     always @(*) begin
+        use_rs1 = 0;
         case (instr_type)
             `IBASE_LUI, `IBASE_AUIPC, `IBASE_JAL: 
                 use_rs1 = 1'b0; 
@@ -146,13 +152,14 @@ module dispatch_stage (
     // Used for: R-Type, Branch, Store
     logic use_rs2;
     always @(*) begin
+        use_rs2 = 0;
         case (instr_type)
-            `IBASE_ALU, `IBASE_BRANCH, `IBASE_STORE, `M_EXT_MUL, `M_EXT_DIV, `V_EXT_VEC:
+            `IBASE_ALU, `IBASE_BRANCH, `IBASE_STORE, `M_EXT_MUL, `M_EXT_DIV, `V_EXT_VEC, `V_EXT_STORE:
                 use_rs2 = 1'b1;
             `V_EXT_LOAD:
                 use_rs2 = (instr_in[27:26] == 2'b10); // mop == 10 means strided load (needs rs2)
             default:
-                use_rs2 = 1'b0;
+                use_rs2 = 1'b0; 
         endcase
     end
 
@@ -162,13 +169,15 @@ module dispatch_stage (
     
     // Preparing destination register for RAT renaming
     // Use dummy dest register for renaming of dest-less instructions
-    logic Use_Dummy_rd = (instr_type == `IBASE_STORE || instr_type == `IBASE_BRANCH || instr_type == `V_EXT_STORE || instr_type == `IBASE_UNKNOWN);
+    logic Use_Dummy_rd;
+    assign Use_Dummy_rd = (instr_type == `IBASE_STORE || instr_type == `IBASE_BRANCH || instr_type == `V_EXT_STORE || instr_type == `IBASE_UNKNOWN);
     assign dst_arch_internal = Use_Dummy_rd ? 5'b0 : rd;
 
     logic [5:0] scalar_phys_rs1, scalar_phys_rs2, scalar_phys_rd_old;
     logic [5:0] vec_phys_rs1, vec_phys_rs2, vec_phys_rd_old;
 
-    logic Scalar_Rename_en = !Use_Dummy_rd && (!is_vec_arith && !is_vec_load && !is_vec_store); // V.CONFIG like vsetvli is executed through scalar datapath
+    logic Scalar_Rename_en;
+    assign Scalar_Rename_en = !Use_Dummy_rd && (!is_vec_arith && !is_vec_load && !is_vec_store); // V.CONFIG like vsetvli is executed through scalar datapath
     rat scalar_rat_inst (
         .clk(clk), .rst_n(rst_n), .flush(flush),
         .src1_arch(rs1_arch_internal), .src2_arch(rs2_arch_internal),
@@ -179,7 +188,8 @@ module dispatch_stage (
         .commit_arch(commit_arch_reg), .commit_phys(commit_phys_reg), .commit_en(commit_rat)
     );
     
-    logic Vector_Rename_en = (is_vec_arith || is_vec_load); // DO NOT RENAME V.STORE and V.CONFIG
+    logic Vector_Rename_en;
+    assign Vector_Rename_en = (is_vec_arith || is_vec_load); // DO NOT RENAME V.STORE and V.CONFIG
     vector_rat vector_rat_inst (
         .clk(clk), .rst_n(rst_n), .flush(flush),
         .src1_arch(rs1_arch_internal), .src2_arch(is_vec_store ? rd : rs2_arch_internal), // V.STORE encodes vs3 (store data) in the rd field;
@@ -371,8 +381,10 @@ module dispatch_stage (
     assign rs_alloc_valid = valid_in && !stall && !flush;
     assign rob_alloc_valid = valid_in && !stall && !flush;
     
-    logic is_load = (instr_type == `IBASE_LOAD || instr_type == `V_EXT_LOAD);
-    logic is_store = (instr_type == `IBASE_STORE || instr_type == `V_EXT_STORE);
+    logic is_load;
+    assign is_load = (instr_type == `IBASE_LOAD || instr_type == `V_EXT_LOAD);
+    logic is_store;
+    assign is_store = (instr_type == `IBASE_STORE || instr_type == `V_EXT_STORE);
     
     assign lsq_alloc_req = (is_load || is_store) && valid_in && !stall && !flush;
     assign lsq_alloc_is_store = is_store;

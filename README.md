@@ -1,33 +1,44 @@
-## Out-of-Order RV32IMV Processor Prototype
+# FredRISC: Out-of-Order RV32IM-SubV Processor
 
-This is a single-issue, speculatively-renamed, Out-of-Order RISC-V processor prototype. It supports the `RV32IM` base integer extensions alongside a tightly-coupled Vector Coprocessor implementing a stripped-down subset of the `Zve32x` Vector Extension.
+FredRISC is a single-issue, speculatively-renamed, Out-of-Order RISC-V processor prototype, supporting the **RV32IM** base integer instruction set alongside a tightly-coupled Vector Coprocessor implementing a targeted subset of the **Zve32x** Vector Extension.
 
-This project serves as a comprehensive architectural study, utilizing a **Unified Scalar/Vector Datapath** and a modern, ARF-less **Register Alias Table (RAT) + Physical Register File (PRF)** architecture (inspired by the MIPS R10000) to achieve precise out-of-order execution.
+This project serves as a comprehensive study of OoO RISC-V architecture and a foundation for expanding to a more advanced design. This prototype utilizes a fully tag-based **Unified Scalar/Vector Datapath** and a modern **Register Alias Table (RAT) + Physical Register File (PRF)** architecture (inspired by the MIPS R10000/Alpha 21264) to achieve precise, high-performance out-of-order execution.  
 
-### Core Architecture
+## Architectural Highlights
 
-* **7-Stage Pipeline:** Fetch, Decode, Dispatch/Rename, Issue, RegRead, Execute, Commit (via ROB).
-* **Hardware Renaming (RAT+PRF):** The design completely eliminates the traditional Architectural Register File (ARF). Speculative data lives entirely in the PRF. The ROB handles in-order retirement by updating the Commit RAT, dynamically shifting architectural pointers without copying data.
-* **Unified Issue & Payload Datapath:** To minimize code footprint, the processor utilizes highly parameterized, generic tag-based Reservation Stations. Scalar and vector instructions share the same issue logic and `reg_read_stage` routers.
-* **Issue Scheduling:** A calendar-based Writeback Scheduler pre-reserves cycles on the Common Data Bus (CDB) to prevent structural hazards, arbitrating superscalar wakeups efficiently.
-* **Dynamic Branch Prediction:** Features a 2-bit Branch History Table (BHT) and Branch Target Buffer (BTB) integrated into the Fetch stage, with delayed precise state recovery handled by the ROB.
-* **Superscalar-Capable Backend:** While the frontend is strictly scalar (1-wide fetch/dispatch), the backend is fully superscalar, capable of issuing and executing up to 5 disjoint instruction types (ALU, MEM, MUL, DIV, VEC) simultaneously.
-* **Vector Coprocessor (`VLEN=128`):** A 4-lane Vector Execution Unit processes 128-bit blocks in a single cycle. `vl` and `vtype` are dynamically tracked as physical dependencies.
-* **Vector-Aware Load/Store Queue (LSQ):** Features combinational memory disambiguation and store-to-load forwarding. An embedded FSM automatically bridges the 128-bit Vector datapath with a standard 32-bit memory interface, supporting dynamic unit-strides and strided loads (SEW=32).
-
----
-
-### Verification & Physical Design Strategy
-
+* **7-Stage Pipeline:** Fetch $\rightarrow$ Decode $\rightarrow$ Dispatch/Rename $\rightarrow$ Issue $\rightarrow$ RegRead $\rightarrow$ Execute $\rightarrow$ Commit (ROB).
+* **Hardware Renaming (RAT+PRF):** Eliminates the traditional Architectural Register File (ARF). Speculative data lives entirely in the PRF. The Reorder Buffer (ROB) handles in-order retirement by updating the Commit RAT, dynamically shifting architectural pointers without copying data.
+* **Unified Issue & Payload Datapath:** Scalar and vector instructions share the same Reservation Stations and `reg_read_stage` routing logic, minimizing footprint and complexity.
+* **Superscalar Backend:** While the frontend is 1-wide, the backend is fully superscalar, capable of issuing and executing up to 5 disjoint instruction types (ALU, MEM, MUL, DIV, VEC) simultaneously.
+* **Scheduled & Unscheduled Bypass Networks:** Both the scalar and vector datapaths utilize a dual-tier forwarding bus architecture—a scheduled bus for deterministic operations (ALU, MUL, etc.) and an unscheduled bus prioritized for variable-latency operations (Load/Store).
+* **Dynamic Branch Prediction:** 2-bit Branch History Table (BHT) and Branch Target Buffer (BTB) integrated into the Fetch stage, with delayed precise state recovery handled by the ROB.
+* **Vector Coprocessor (`VLEN=128`):** A 4-lane Vector Execution Unit processes 128-bit blocks. Vector length (`vl`) and type (`vtype`) are dynamically tracked through the pipeline as physical dependencies.
+* **Vector-Aware Load/Store Queue (LSQ):** Out-of-Order memory subsystem featuring combinational memory disambiguation and Store-to-Load Forwarding. An embedded FSM automatically bridges the 128-bit Vector datapath with the 32-bit memory interface.
 
 ---
 
-### Next-Gen Roadmap
+## Quick Start & Verification
 
-While functional, this prototype takes deliberate shortcuts to fit within a manageable Verilog footprint. A future, highly-modularized "V2" core will implement the following industry-standard techniques:
+The processor is verified using **Verilator**, which compiles the SystemVerilog RTL directly into a highly optimized, cycle-accurate C++ executable. The verification suite utilizes directed, **white-box SystemVerilog testbenches** to expose complex microarchitectural edge cases such as memory disambiguation flushes, cross-domain tag aliasing, and store-to-load forwarding.
 
-1. **Decoupled Scalar/Vector Datapaths:** Separating the integer and vector pipelines after Dispatch to eliminate massive cross-domain routing complexity.
-2. **Superscalar Frontend:** Expanding the Fetch, Decode, and RAT structures to handle 2+ instructions per cycle.
-3. **Micro-op Cracking (`LMUL > 1`):** Industry cores dynamically support `LMUL=2,4,8` by stalling the decoder and "cracking" the instruction into multiple `LMUL=1` micro-operations. Our core currently only supports `LMUL=1`.
-4. **Element-Level Chaining & Pipelined VEU:** Our VEU currently computes 128 bits in one cycle. An industry core deeply pipelines the VEU and uses Bypass FIFOs to broadcast elements cycle-by-cycle, allowing dependent instructions to chain immediately.
-5. **Masking (`v0.t`) & Precise Exceptions (`vstart`):** Adding the vector mask register network, and robust page-fault handling. If an industry LSQ hits a Page Fault mid-vector, it halts, saves the index to the `vstart` CSR, flushes, and resumes later.
+### Prerequisites
+* `make`
+* `verilator` (Version 5.0+ required for `--timing` support)
+
+### Running the Simulation
+To compile the RTL into a Verilator C++ model and execute the core testbench:
+```bash
+cd design
+make sim-verilator
+```
+*To target a different test scenario, edit the `--top-module` flag in the `Makefile`.*
+
+---
+
+## Project Documentation
+
+Detailed architectural breakdowns and references can be found in the `design/md/` directory:
+
+* **ISA & Instruction Reference:** Complete list of supported RV32IM and RVV instructions, encoding formats, and Vector execution rationale.
+* **Testbench Guide:** Overview of the directed testbenches, trace logging, and memory configurations.
+* **Architecture Roadmap:** An analysis of the architectural shortcuts taken in this prototype, and the required microarchitectural upgrades (e.g., Element-level Chaining, Micro-op Cracking) to reach commercial silicon parity.

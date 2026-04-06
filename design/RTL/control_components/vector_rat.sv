@@ -4,7 +4,7 @@
 // Maps architectural vector registers (v0-v31) to PHYSICAL vector registers
 // (vp0-vp63). Operates completely independently of the scalar RAT.
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module vector_rat (
     input clk,

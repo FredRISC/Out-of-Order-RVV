@@ -4,7 +4,7 @@
 // Latency: `MUL_LATENCY (default 4 cycles)
 // Supports: MUL, MULH, MULHSU, MULHU
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module multiplier (
     input clk,
@@ -17,7 +17,9 @@ module multiplier (
     
     output reg [`XLEN-1:0] product_low,
     output reg [`XLEN-1:0] product_high,
-    output reg valid_out
+    output reg valid_out,
+    input [5:0] tag_in,
+    output reg [5:0] tag_out
 );
     // Behavioral modeling of multiplication
     // Replace this with real multiplier IP. This is just for functional correctness in the prototype.
@@ -26,6 +28,7 @@ module multiplier (
     reg [63:0] pp_accum [`MUL_LATENCY-1:0];
     reg stage_valid [`MUL_LATENCY-1:0];
     reg [1:0] mul_type_pipe [`MUL_LATENCY-1:0];
+    reg [5:0] tag_pipe [`MUL_LATENCY-1:0];
     
     // Sign extension for signed multiplications
     logic [`XLEN:0] mcand_extended, mplier_extended;
@@ -55,6 +58,7 @@ module multiplier (
                 pp_accum[i] <= 0;
                 stage_valid[i] <= 1'b0;
                 mul_type_pipe[i] <= 2'b0;
+                tag_pipe[i] <= 6'b0;
             end
         end else begin
             // Stage 0: Initial partial products
@@ -63,6 +67,7 @@ module multiplier (
                 pp_accum[0] <= $signed(mcand_extended) * $signed(mplier_extended);
                 stage_valid[0] <= 1'b1;
                 mul_type_pipe[0] <= mul_type;
+                tag_pipe[0] <= tag_in;
             end else begin
                 stage_valid[0] <= 1'b0;
             end
@@ -72,6 +77,7 @@ module multiplier (
                 pp_accum[i] <= pp_accum[i-1];
                 stage_valid[i] <= stage_valid[i-1];
                 mul_type_pipe[i] <= mul_type_pipe[i-1];
+                tag_pipe[i] <= tag_pipe[i-1];
             end
         end
     end
@@ -89,6 +95,7 @@ module multiplier (
             end
         endcase
         valid_out = stage_valid[`MUL_LATENCY-1];
+        tag_out = tag_pipe[`MUL_LATENCY-1];
     end
 
 endmodule

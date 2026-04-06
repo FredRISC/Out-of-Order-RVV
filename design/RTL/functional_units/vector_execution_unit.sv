@@ -6,7 +6,7 @@
 // Chaining will be enabled later (Pipelining)
 
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module vector_execution_unit (
     input clk,
@@ -25,6 +25,8 @@ module vector_execution_unit (
     // Result interface
     output reg [`VLEN-1:0] vec_result,
     output reg vec_result_valid,
+    input [5:0] tag_in,
+    output reg [5:0] tag_out,
     
     // Handshaking with Execute Stage
     input cdb_granted,      // VEU result was broadcast on CDB
@@ -79,14 +81,22 @@ module vector_execution_unit (
         end
     end
 
+    // Pipeline the tag tracking 2 cycles alongside the vector lane delay
+    reg [5:0] tag_stage1;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) tag_stage1 <= 6'b0;
+        else if (vec_valid) tag_stage1 <= tag_in;
+    end
     
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             vec_result_valid <= 1'b0;
+            tag_out <= 6'b0;
         end 
         else if (lane_valid[0]) begin // SIMPLIFIED FOR NOW
             vec_result <= lane_results_comb;
             vec_result_valid <= 1'b1;
+            tag_out <= tag_stage1;
         end else begin
             vec_result_valid <= 1'b0;
         end

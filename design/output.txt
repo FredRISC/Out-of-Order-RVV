@@ -1,0 +1,57 @@
+Compiling RISC-V OoO Processor with Verilator...
+verilator --binary --timing --Wno-fatal --top-module tb_vector_mem -I. RTL/riscv_header.sv RTL/pipeline_stages/frontend/fetch_stage.sv RTL/pipeline_stages/frontend/decode_stage.sv RTL/pipeline_stages/frontend/dispatch_stage.sv RTL/pipeline_stages/backend/issue_stage.sv RTL/pipeline_stages/backend/reg_read_stage.sv RTL/pipeline_stages/backend/execute_stage.sv RTL/OoO_Core_Modules/reservation_station.sv RTL/OoO_Core_Modules/reorder_buffer.sv RTL/OoO_Core_Modules/load_store_queue.sv RTL/OoO_Core_Modules/issue_scheduler.sv RTL/functional_units/alu.sv RTL/functional_units/multiplier.sv RTL/functional_units/divider.sv RTL/functional_units/vector_execution_unit.sv RTL/functional_units/vector_lane.sv RTL/control_components/physical_register_file.sv RTL/control_components/vector_physical_register_file.sv RTL/control_components/rat.sv RTL/control_components/vector_rat.sv RTL/control_components/free_list.sv RTL/control_components/vector_free_list.sv RTL/control_components/branch_predictor.sv RTL/control_components/main_controller.sv RTL/control_components/vector_csr.sv RTL/riscv_core_top.sv tb/tb_riscv_core.sv tb/tb_disambiguation.sv tb/tb_vector_mem.sv 
+make[1]: Entering directory '/home/fredrick/FredRISC/Out-of-Order-RVV/design/obj_dir'
+make[1]: Nothing to be done for 'default'.
+make[1]: Leaving directory '/home/fredrick/FredRISC/Out-of-Order-RVV/design/obj_dir'
+- V e r i l a t i o n   R e p o r t: Verilator 5.033 devel rev v5.032-74-gfbe8439eb
+- Verilator: Built from 0.000 MB sources in 0 modules, into 0.000 MB in 0 C++ files needing 0.000 MB
+- Verilator: Walltime 0.012 s (elab=0.000, cvt=0.000, bld=0.012); cpu 0.000 s on 1 threads; alloced 18.648 MB
+Running Verilator simulation...
+./obj_dir/Vtb_vector_mem
+==================================================
+TEST: Vector LSQ Memory Burst & VEU
+==================================================
+[Cycle 9] [COMMIT] Vector Store Commits! Sent commit_lsq.
+[Cycle 10] [EXECUTE] Vector Store: Addr=100, VL=4, Data=4000000030000000200000001
+[Cycle 11] [LSQ FSM] Active! word_idx=0, total_words=4, lsq_vl=4
+[Cycle 11] [MEMORY] WRITE: Addr=100, Data=1 (Hex: 1), BE=1111
+[Cycle 11] [EXECUTE] Vector Load: Addr=100, VL=4
+[Cycle 12] [LSQ FSM] Active! word_idx=1, total_words=4, lsq_vl=4
+[Cycle 12] [MEMORY] WRITE: Addr=104, Data=2 (Hex: 2), BE=1111
+[Cycle 13] [LSQ FSM] Active! word_idx=2, total_words=4, lsq_vl=4
+[Cycle 13] [MEMORY] WRITE: Addr=108, Data=3 (Hex: 3), BE=1111
+[Cycle 13] [LSQ FSM] Active! word_idx=0, total_words=4, lsq_vl=4
+[Cycle 13] [MEMORY] READ: Addr=100, Data=1 (Hex: 1), BE=1111
+[Cycle 14] [LSQ FSM] Active! word_idx=2, total_words=4, lsq_vl=4
+[Cycle 14] [MEMORY] WRITE: Addr=108, Data=3 (Hex: 3), BE=1111
+[Cycle 14] [MEMORY] READ: Addr=100, Data=1 (Hex: 1), BE=1111
+[Cycle 15] [LSQ FSM] Active! word_idx=2, total_words=4, lsq_vl=4
+[Cycle 15] [MEMORY] WRITE: Addr=108, Data=3 (Hex: 3), BE=1111
+[Cycle 15] [MEMORY] READ: Addr=100, Data=1 (Hex: 1), BE=1111
+[Cycle 16] [LSQ FSM] Active! word_idx=3, total_words=4, lsq_vl=4
+[Cycle 16] [MEMORY] WRITE: Addr=112, Data=4 (Hex: 4), BE=1111
+[Cycle 19] [EXECUTE] Vector Load: Addr=1, VL=4
+[Cycle 21] [LSQ FSM] Active! word_idx=0, total_words=4, lsq_vl=4
+[Cycle 21] [MEMORY] READ: Addr=1, Data=0 (Hex: 0), BE=1111
+[Cycle 22] [LSQ FSM] Active! word_idx=1, total_words=4, lsq_vl=4
+[Cycle 22] [MEMORY] READ: Addr=5, Data=0 (Hex: 0), BE=1111
+[Cycle 23] [LSQ FSM] Active! word_idx=2, total_words=4, lsq_vl=4
+[Cycle 23] [MEMORY] READ: Addr=9, Data=0 (Hex: 0), BE=1111
+[Cycle 24] [LSQ FSM] Active! word_idx=3, total_words=4, lsq_vl=4
+[Cycle 24] [MEMORY] READ: Addr=13, Data=0 (Hex: 0), BE=1111
+[Cycle 26] [COMMIT] Vector Load Commits! Sent commit_lsq.
+
+[RESULTS]
+DataArray3: 4
+DataArray2: 3
+DataArray1: 2
+DataArray0: 1
+v3 Element 3: 0
+v3 Element 2: 0
+v3 Element 1: 0
+v3 Element 0: 0
+[FAIL] Vector math is incorrect.
+- tb/tb_vector_mem.sv:109: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.033 devel
+- Verilator: $finish at 825ns; walltime 0.001 s; speed 269.679 us/s
+- Verilator: cpu 0.003 s on 1 threads; alloced 185 MB

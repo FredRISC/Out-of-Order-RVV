@@ -6,7 +6,7 @@
 //   - Maps to physical register IDs, not ROB IDs
 //   - Tracks which phys reg holds which arch reg's value
 
-`include "riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module rat (
     input clk,

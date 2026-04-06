@@ -4,7 +4,7 @@
 // Holds SPECULATIVE VECTORS during execution.
 // 64 entries, each `VLEN (128) bits wide.
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module vector_physical_register_file (
     input clk,

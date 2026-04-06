@@ -2,6 +2,8 @@
 // components/branch_predictor.sv - 2-bit BHT/BTB Branch Predictor
 // ============================================================================
 
+`include "RTL/riscv_header.sv"
+
 module branch_predictor (
     input clk,
     input rst_n,
@@ -32,9 +34,10 @@ module branch_predictor (
     // Update BHT and BTB on branch resolution
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int i = 0; i < `BHT_SIZE; i++)
+            for (int i = 0; i < `BHT_SIZE; i++) begin
                 branch_history[i] <= 2'b01;  // Weakly not taken
                 target_history[i] <= 32'h0;
+            end
         end else if (branch_update_en) begin
             logic [7:0] update_idx;
             update_idx = resolved_pc[9:2];

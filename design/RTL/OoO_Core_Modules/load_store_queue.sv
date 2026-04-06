@@ -4,7 +4,7 @@
 // Implements load/store queues with address hazard detection (WAR, RAW, WAW)
 // and store-to-load forwarding.
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module load_store_queue (
     input clk,
@@ -90,14 +90,14 @@ module load_store_queue (
     
     lsq_entry_t lsq [`LSQ_SIZE-1:0]; 
     
-    logic [`LSQ_TAG_WIDTH-1:0] head, tail, commit_ptr;
-    logic [`LSQ_TAG_WIDTH-1:0] next_tail;
+    logic [$clog2(`LSQ_SIZE)-1:0] head, tail, commit_ptr;
+    logic [$clog2(`LSQ_SIZE)-1:0] next_tail;
     
     assign next_tail = tail + 1;
     
     // Output Allocation Tags (to Dispatch)
     assign alloc_tag = tail;
-    assign lsq_full = (next_tail == head) && lsq[tail].valid;
+    assign lsq_full = lsq[tail].valid; // Bulletproof circular buffer full logic
     assign load_blocked = 1'b0; 
     assign store_blocked = 1'b0;
     
@@ -154,7 +154,7 @@ module load_store_queue (
         // Re-using the logic from above, total words = ceil((vl * bytes_per_elem) / 4)
         logic [`XLEN-1:0] end_offset;
         end_offset = get_end_addr(0, 1'b1, vl, vtype, 3'b000);
-        get_total_words = (end_offset >> 2) + 1; 
+        get_total_words = 8'((end_offset >> 2) + 1); 
     endfunction
     
     function logic [`XLEN-1:0] get_stride(input [31:0] vtype);
@@ -181,27 +181,23 @@ module load_store_queue (
     logic [`LSQ_TAG_WIDTH-1:0] ptr_load_select; 
 
     always @(*) begin
-        integer i;
         issue_load_valid = 1'b0;
         issue_load_idx = 0;
-        dmem_read_addr = 0;
-        dmem_read_en = 1'b0;
         ptr_load_select = 0;
 
         // Scan from Head (Oldest) to Tail
-        for (i = 0; i < `LSQ_SIZE; i++) begin
+        for (int i = 0; i < `LSQ_SIZE; i++) begin
             ptr_load_select = head + i[`LSQ_TAG_WIDTH-1:0];
-
+            if (ptr_load_select == tail && !lsq_full) break; // Checked all younger entries
+    
             // A load is ready to issue (no memory load response pending and address/data ready)
-            assign issue_load_ready = lsq[ptr_load_select].valid && !lsq[ptr_load_select].is_store && lsq[ptr_load_select].addr_valid && 
+            issue_load_ready = lsq[ptr_load_select].valid && !lsq[ptr_load_select].is_store && lsq[ptr_load_select].addr_valid && 
                 !lsq[ptr_load_select].data_valid && !lsq[ptr_load_select].sent_to_mem && !mem_inflight_valid;
             if (issue_load_ready) begin // prepare to issue it in the next cycle
                 issue_load_idx = ptr_load_select; // record the ptr for tracking
                 issue_load_valid = 1'b1; // mark that we have a load to issue in the next cycle
                 break;
             end
-
-            if (ptr == tail) break;
         end
     end
 
@@ -213,58 +209,61 @@ module load_store_queue (
     logic forwarding_valid;
     logic [`XLEN-1:0] exe_end_addr;
     logic [`XLEN-1:0] ptr_end_addr;
-    logic [`LSQ_TAG_WIDTH-1:0] ptr;
+    logic [`LSQ_TAG_WIDTH-1:0] ptr_disambiguation;
+    logic [`LSQ_TAG_WIDTH-1:0] ptr_forwarding;
 
     always @(*) begin
-        integer k;
         flush_pipeline = 1'b0;
         lsq_violation_tag = 6'b0;
         forwarding_valid = 1'b0;
         forwarded_data = 0;
-        ptr = 0;
+        exe_end_addr = 0;
+        ptr_disambiguation = 0;
+        ptr_forwarding = 0;
+        ptr_end_addr = 0;
 
         if (exe_store_valid) begin // Check at the moment we receive the calculated st address from execute stage
             // 1. DISAMBIGUATION: Range Overlap Check
             exe_end_addr = get_end_addr(exe_addr, lsq[exe_lsq_tag].is_vector, exe_vl, lsq[exe_lsq_tag].vtype, lsq[exe_lsq_tag].mem_size);
-            for (k = 1; k < `LSQ_SIZE; k++) begin
-                ptr = exe_lsq_tag + k[`LSQ_TAG_WIDTH-1:0]; //check younger load entries
+            for (int i = 1; i < `LSQ_SIZE; i++) begin
+                ptr_disambiguation = exe_lsq_tag + i[`LSQ_TAG_WIDTH-1:0]; //check younger load entries
+                if (ptr_disambiguation == tail && !lsq_full) break; // Checked all younger entries
                 
                 // check younger loads that has already calculated its address
-                if (lsq[ptr].valid && !lsq[ptr].is_store && lsq[ptr].addr_valid) begin
-                    ptr_end_addr = get_end_addr(lsq[ptr].address, lsq[ptr].is_vector, lsq[ptr].vl, lsq[ptr].vtype, lsq[ptr].mem_size);
-                    if ((lsq[ptr].address <= exe_end_addr) && (ptr_end_addr >= exe_addr)) begin
+                if (lsq[ptr_disambiguation].valid && !lsq[ptr_disambiguation].is_store && lsq[ptr_disambiguation].addr_valid) begin
+                    ptr_end_addr = get_end_addr(lsq[ptr_disambiguation].address, lsq[ptr_disambiguation].is_vector, lsq[ptr_disambiguation].vl, lsq[ptr_disambiguation].vtype, lsq[ptr_disambiguation].mem_size);
+                    if ((lsq[ptr_disambiguation].address <= exe_end_addr) && (ptr_end_addr >= exe_addr)) begin
                         flush_pipeline = 1'b1;
-                        lsq_violation_tag = lsq[ptr].phys_tag; // mark the younger load as violation
+                        lsq_violation_tag = lsq[ptr_disambiguation].phys_tag; // mark the younger load as violation
                     end
                 end
-                if (ptr == tail) break; // Checked all younger entries
             end
         end 
         else if (exe_load_valid) begin // Check at the moment we receive the calculated ld address from execute stage
             // 2. FORWARDING AND RANGE CONFLICTS
             exe_end_addr = get_end_addr(exe_addr, lsq[exe_lsq_tag].is_vector, exe_vl, lsq[exe_lsq_tag].vtype, lsq[exe_lsq_tag].mem_size);
-            for (k = 1; k < `LSQ_SIZE; k++) begin               
-                ptr = exe_lsq_tag - k[`LSQ_TAG_WIDTH-1:0]; //check older entries
-                
-                // If it's an older store with valid address, check for Range Overlap
-                if (lsq[ptr].valid && lsq[ptr].is_store && lsq[ptr].addr_valid) begin
-                    ptr_end_addr = get_end_addr(lsq[ptr].address, lsq[ptr].is_vector, lsq[ptr].vl, lsq[ptr].vtype, lsq[ptr].mem_size);
-                    if ((lsq[ptr].address <= exe_end_addr) && (ptr_end_addr >= exe_addr)) begin
-                        // Only forward if both are identical, scalar, word-aligned accesses
-                        if (!lsq[ptr].is_vector && !lsq[exe_lsq_tag].is_vector && (lsq[ptr].address == exe_addr) && (lsq[ptr].mem_size == 3'b010)) begin 
-                            forwarded_data = lsq[ptr].data; 
-                            forwarding_valid = 1'b1;
-                        end 
-                        else begin
-                            // Potenial Overlap:  Simplified logic to flush the load
-                            // and let it retry after the store permanently writes to memory.
-                            flush_pipeline = 1'b1;
-                            lsq_violation_tag = lsq[exe_lsq_tag].phys_tag;
+            if (exe_lsq_tag != head) begin // Check if older entries exist
+                for (int i = 1; i < `LSQ_SIZE; i++) begin               
+                    ptr_forwarding = exe_lsq_tag - i[`LSQ_TAG_WIDTH-1:0]; //check older entries
+                    
+                    // If it's an older store with valid address, check for Range Overlap
+                    if (lsq[ptr_forwarding].valid && lsq[ptr_forwarding].is_store && lsq[ptr_forwarding].addr_valid) begin
+                        ptr_end_addr = get_end_addr(lsq[ptr_forwarding].address, lsq[ptr_forwarding].is_vector, lsq[ptr_forwarding].vl, lsq[ptr_forwarding].vtype, lsq[ptr_forwarding].mem_size);
+                        if ((lsq[ptr_forwarding].address <= exe_end_addr) && (ptr_end_addr >= exe_addr)) begin
+                            // Only forward if both are identical, scalar, word-aligned accesses
+                            if (!lsq[ptr_forwarding].is_vector && !lsq[exe_lsq_tag].is_vector && (lsq[ptr_forwarding].address == exe_addr) && (lsq[ptr_forwarding].mem_size == 3'b010)) begin 
+                                forwarded_data = lsq[ptr_forwarding].data[`XLEN-1:0];
+                                forwarding_valid = 1'b1; 
+                            end 
+                            else begin
+                                flush_pipeline = 1'b1;
+                                lsq_violation_tag = lsq[exe_lsq_tag].phys_tag;
+                            end
+                            break; // Stop searching older stores once we find the youngest overlapping one!
                         end
-                        break;
                     end
+                    if (ptr_forwarding == head) break; // Checked all older entries
                 end
-                if (ptr == head) break; // Checked all older entries
             end
         end
     end
@@ -278,7 +277,7 @@ module load_store_queue (
     logic vec_load_active;
     logic [7:0] vec_load_word_idx;
     logic [7:0] vec_load_total_words;
-    assign vec_load_total_words = get_total_words(lsq[issue_load_idx].vl, lsq[issue_load_idx].vtype);
+    assign vec_load_total_words = get_total_words(lsq[mem_inflight_idx].vl, lsq[mem_inflight_idx].vtype);
     logic vec_store_active;
     logic [7:0] vec_store_word_idx;
     logic [7:0] vec_store_total_words;
@@ -288,9 +287,8 @@ module load_store_queue (
     logic read_en;
 
     always @(posedge clk or negedge rst_n) begin
-        integer i;
-        if (!rst_n || flush) begin
-            for (i = 0; i < `LSQ_SIZE; i++) begin
+        if (!rst_n) begin
+            for (int i = 0; i < `LSQ_SIZE; i++) begin
                 lsq[i].valid <= 1'b0;
             end
             head <= 0;
@@ -301,6 +299,18 @@ module load_store_queue (
             vec_load_word_idx <= 8'b0;
             vec_store_active <= 1'b0;
             vec_store_word_idx <= 8'b0;
+        end else if (flush) begin
+            // ONLY wipe speculative entries. Committed stores MUST drain to memory!
+            for (int i = 0; i < `LSQ_SIZE; i++) begin
+                if (!lsq[i].committed) begin
+                    lsq[i].valid <= 1'b0;
+                end
+            end
+            tail <= commit_ptr; // Roll back the allocation pointer safely
+            mem_inflight_valid <= 1'b0;
+            vec_load_active <= 1'b0;
+            vec_load_word_idx <= 8'b0;
+            // DO NOT reset head, commit_ptr, or the vec_store FSM.
         end else begin
             // 1. Allocation (Dispatch)
             if (alloc_req && !lsq_full) begin
@@ -331,7 +341,7 @@ module load_store_queue (
                 end
                 
                 if (forwarding_valid) begin
-                    lsq[exe_lsq_tag].data <= { {(`DLEN-`XLEN){1'b0}}, format_data(forwarded_data[`XLEN-1:0], lsq[exe_lsq_tag].mem_size , exe_addr[1:0]) };
+                    lsq[exe_lsq_tag].data <= { {(`DLEN-`XLEN){1'b0}}, format_data(forwarded_data, lsq[exe_lsq_tag].mem_size , exe_addr[1:0]) };
                     lsq[exe_lsq_tag].data_valid <= 1'b1;
                 end
                 // else: wait for memory read request issue/response
@@ -484,7 +494,6 @@ module load_store_queue (
     logic [`LSQ_TAG_WIDTH-1:0] ptr_broadcast_select;
 
     always @(*) begin
-        integer i;
         lsq_data_out = 0;
         lsq_out_valid = 1'b0;
         cdb_phys_tag_out = 0;
@@ -495,9 +504,9 @@ module load_store_queue (
         ptr_broadcast_select = 0;
 
         // Scan from Head to Tail for oldest un-broadcasted ready entry
-        for (i = 0; i < `LSQ_SIZE; i++) begin
+        for (int i = 0; i < `LSQ_SIZE; i++) begin
             ptr_broadcast_select = head + i[`LSQ_TAG_WIDTH-1:0];
-            
+            if (ptr_broadcast_select == tail && !lsq_full) break;
             // An entry is ready to broadcast when:
             // - A load has its data ready from memory.
             // - A store has its address ready from the AGU.
@@ -505,11 +514,11 @@ module load_store_queue (
                 if ((!lsq[ptr_broadcast_select].is_store && lsq[ptr_broadcast_select].data_valid) || 
                     (lsq[ptr_broadcast_select].is_store && lsq[ptr_broadcast_select].addr_valid)) begin
                     
-                    if (lsq[ptr_broadcast_select].is_vector && !lsq[ptr_broadcast_select].is_store) begin // Vector Load -> Vector CDB
+                    if (lsq[ptr_broadcast_select].is_vector) begin // Vector Load AND Store -> Vector CDB
                         vec_lsq_out_valid = 1'b1;
                         vec_cdb_phys_tag_out = lsq[ptr_broadcast_select].phys_tag;
                         vec_lsq_data_out = lsq[ptr_broadcast_select].data;
-                    end else begin // Scalar Load or any Store -> Scalar CDB
+                    end else begin // Scalar Load or Scalar Store -> Scalar CDB
                         lsq_out_valid = 1'b1;
                         cdb_phys_tag_out = lsq[ptr_broadcast_select].phys_tag;
                         lsq_data_out = lsq[ptr_broadcast_select].data[`XLEN-1:0]; // Truncate for scalar bus
@@ -518,7 +527,6 @@ module load_store_queue (
                     break;
                 end
             end
-            if (ptr == tail) break;
         end
     end
 

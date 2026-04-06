@@ -5,7 +5,7 @@
 // When phys reg is freed (on commit), return to free_list
 // When new alloc needed, get from free_list
 
-`include "riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module free_list (
     input clk,

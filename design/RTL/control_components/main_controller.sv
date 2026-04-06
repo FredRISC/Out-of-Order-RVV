@@ -3,7 +3,7 @@
 // ============================================================================
 // Controls pipeline sequencing, stall signals, and operational modes
 
-`include "../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module main_controller (
     input clk,

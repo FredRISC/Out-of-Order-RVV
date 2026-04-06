@@ -6,7 +6,7 @@
 // (PC/Immediates), and flops the payload to the Execute Stage.
 // CDB broadcasts in this stage are currently redundant
 
-`include "../../riscv_header.sv"
+`include "RTL/riscv_header.sv"
 
 module reg_read_stage (
     input clk,
