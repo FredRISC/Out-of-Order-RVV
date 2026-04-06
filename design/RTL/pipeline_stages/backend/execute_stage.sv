@@ -122,6 +122,14 @@ module execute_stage (
     logic [5:0] alu_tags [`NUM_ALU_FUS-1:0];
     logic alu_valids [`NUM_ALU_FUS-1:0];
     
+    // Pipelined Side-band Signals for Branch Resolution
+    logic [4:0] alu_ops [`NUM_ALU_FUS-1:0];
+    logic [`XLEN-1:0] alu_pcs [`NUM_ALU_FUS-1:0];
+    logic [`XLEN-1:0] alu_imms [`NUM_ALU_FUS-1:0];
+    logic alu_pred_branches [`NUM_ALU_FUS-1:0];
+    logic [`XLEN-1:0] alu_pred_targets [`NUM_ALU_FUS-1:0];
+    logic [`XLEN-1:0] alu_op1s [`NUM_ALU_FUS-1:0];
+
     // MUL FU outputs (can have multiple multipliers)
     logic [`XLEN-1:0] mul_results [`NUM_MUL_FUS-1:0];
     logic [5:0] mul_tags [`NUM_MUL_FUS-1:0];
@@ -163,13 +171,42 @@ module execute_stage (
             );
             
             // Local pipeline for tag since ALU module wasn't modified to pass it through
-            reg [5:0] alu_tag_pipe [`ALU_LATENCY:0]; 
+            reg [5:0] alu_tag_pipe [0:`ALU_LATENCY]; 
+            reg [4:0] alu_op_pipe [0:`ALU_LATENCY];
+            reg [`XLEN-1:0] alu_pc_pipe [0:`ALU_LATENCY];
+            reg [`XLEN-1:0] alu_imm_pipe [0:`ALU_LATENCY];
+            reg alu_pred_branch_pipe [0:`ALU_LATENCY];
+            reg [`XLEN-1:0] alu_pred_target_pipe [0:`ALU_LATENCY];
+            reg [`XLEN-1:0] alu_op1_pipe [0:`ALU_LATENCY];
+            
             always @(posedge clk) begin
-                if (alu_valid) alu_tag_pipe[0] <= alu_tag;
-                for (int j = 1; j <= `ALU_LATENCY; j = j + 1) alu_tag_pipe[j] <= alu_tag_pipe[j-1];
+                if (alu_valid) begin
+                    alu_tag_pipe[0] <= alu_tag;
+                    alu_op_pipe[0] <= alu_operation;
+                    alu_pc_pipe[0] <= alu_pc;
+                    alu_imm_pipe[0] <= alu_imm;
+                    alu_pred_branch_pipe[0] <= alu_predicted_branch;
+                    alu_pred_target_pipe[0] <= alu_predicted_target;
+                    alu_op1_pipe[0] <= alu_op1;
+                end
+                for (int j = 1; j <= `ALU_LATENCY; j = j + 1) begin
+                    alu_tag_pipe[j] <= alu_tag_pipe[j-1];
+                    alu_op_pipe[j] <= alu_op_pipe[j-1];
+                    alu_pc_pipe[j] <= alu_pc_pipe[j-1];
+                    alu_imm_pipe[j] <= alu_imm_pipe[j-1];
+                    alu_pred_branch_pipe[j] <= alu_pred_branch_pipe[j-1];
+                    alu_pred_target_pipe[j] <= alu_pred_target_pipe[j-1];
+                    alu_op1_pipe[j] <= alu_op1_pipe[j-1];
+                end
             end
             
             assign alu_tags[i] = (`ALU_LATENCY > 0) ? alu_tag_pipe[`ALU_LATENCY-1] : alu_tag;
+            assign alu_ops[i] = (`ALU_LATENCY > 0) ? alu_op_pipe[`ALU_LATENCY-1] : alu_operation;
+            assign alu_pcs[i] = (`ALU_LATENCY > 0) ? alu_pc_pipe[`ALU_LATENCY-1] : alu_pc;
+            assign alu_imms[i] = (`ALU_LATENCY > 0) ? alu_imm_pipe[`ALU_LATENCY-1] : alu_imm;
+            assign alu_pred_branches[i] = (`ALU_LATENCY > 0) ? alu_pred_branch_pipe[`ALU_LATENCY-1] : alu_predicted_branch;
+            assign alu_pred_targets[i] = (`ALU_LATENCY > 0) ? alu_pred_target_pipe[`ALU_LATENCY-1] : alu_predicted_target;
+            assign alu_op1s[i] = (`ALU_LATENCY > 0) ? alu_op1_pipe[`ALU_LATENCY-1] : alu_op1;
         end
     endgenerate
 
@@ -322,6 +359,12 @@ module execute_stage (
     logic [`XLEN-1:0] alu_result_selected;
     logic [5:0] alu_tag_selected;
     logic alu_result_valid;
+    logic [4:0] alu_op_selected;
+    logic [`XLEN-1:0] alu_pc_selected;
+    logic [`XLEN-1:0] alu_imm_selected;
+    logic alu_pred_branch_selected;
+    logic [`XLEN-1:0] alu_pred_target_selected;
+    logic [`XLEN-1:0] alu_op1_selected;
     
     // ALU result selection
     always @(*) begin
@@ -329,12 +372,24 @@ module execute_stage (
         alu_result_valid = 1'b0;
         alu_result_selected = 0;
         alu_tag_selected = 0;
+        alu_op_selected = 0;
+        alu_pc_selected = 0;
+        alu_imm_selected = 0;
+        alu_pred_branch_selected = 0;
+        alu_pred_target_selected = 0;
+        alu_op1_selected = 0;
         
         for (j = 0; j < `NUM_ALU_FUS; j = j + 1) begin
             if (alu_valids[j]) begin
                 alu_result_valid = 1'b1;
                 alu_result_selected = alu_results[j];
                 alu_tag_selected = alu_tags[j];
+                alu_op_selected = alu_ops[j];
+                alu_pc_selected = alu_pcs[j];
+                alu_imm_selected = alu_imms[j];
+                alu_pred_branch_selected = alu_pred_branches[j];
+                alu_pred_target_selected = alu_pred_targets[j];
+                alu_op1_selected = alu_op1s[j];
                 break;
             end
         end
@@ -383,7 +438,7 @@ module execute_stage (
     // ========================================================================
     // Branch Evaluation (Using the existing ALU Result)
     // ========================================================================
-    // ARCHITECTURAL NOTE: In this V1 prototype, unconditional jumps (JAL/JALR) are 
+    // ARCHITECTURAL NOTE: In this prototype, unconditional jumps (JAL/JALR) are 
     // resolved late in the Execute stage to simplify the flush/recovery architecture (via ROB).
     // They update the predictor here so Fetch can learn the jump target for next time.
     // Future Upgrade ("Frontend Redirect"): Decode stage should calculate JAL targets and 
@@ -393,19 +448,19 @@ module execute_stage (
     logic [`XLEN-1:0] actual_target;
     
     logic is_branch, is_jal, is_jalr;
-    assign is_branch = (alu_operation >= `ALU_BEQ && alu_operation <= `ALU_BGEU);
-    assign is_jal = (alu_operation == `ALU_JAL);
-    assign is_jalr = (alu_operation == `ALU_JALR);
+    assign is_branch = (alu_op_selected >= `ALU_BEQ && alu_op_selected <= `ALU_BGEU);
+    assign is_jal = (alu_op_selected == `ALU_JAL);
+    assign is_jalr = (alu_op_selected == `ALU_JALR);
     
     always @(*) begin
         actual_taken = 1'b0;
-        actual_target = alu_pc + alu_imm; // Default target calculation for JAL and Branch
+        actual_target = alu_pc_selected + alu_imm_selected; // Default target calculation for JAL and Branch
         
         if (is_jal) begin
             actual_taken = 1'b1;
         end else if (is_jalr) begin
             actual_taken = 1'b1;
-            actual_target = (alu_op1 + alu_imm) & ~32'h1; // JALR Target (rs1 + imm, clear LSB); all RISC-V instructions must be aligned to 2-byte boundaries
+            actual_target = (alu_op1_selected + alu_imm_selected) & ~32'h1; // JALR Target (rs1 + imm, clear LSB); all RISC-V instructions must be aligned to 2-byte boundaries
         end else if (is_branch) begin
             actual_taken = (alu_result_selected == 32'h1); // Uses the native ALU branch evaluation
         end
@@ -416,16 +471,16 @@ module execute_stage (
         
         // Detect mispredictions (Direction mismatch OR Target Aliasing)
         if (alu_result_valid && (is_branch || is_jal || is_jalr)) begin // We predict target address for JAL/JALR/Branch
-            if ((actual_taken != alu_predicted_branch) || (actual_taken && (actual_target != alu_predicted_target))) begin
+            if ((actual_taken != alu_pred_branch_selected) || (actual_taken && (actual_target != alu_pred_target_selected))) begin
                 alu_flush_req = 1'b1; // prediction failed - req sent to the ROB entry to mark it as violation (Delayed Flush)
-                alu_flush_target = actual_taken ? actual_target : (alu_pc + 4);
+                alu_flush_target = actual_taken ? actual_target : (alu_pc_selected + 4);
             end
         end
     end
     
     // If prediction failed, update the predictor if branch was taken
     assign branch_update_req = alu_result_valid && (is_branch || is_jal || is_jalr); 
-    assign branch_update_pc = alu_pc; // This is the resolved_pc input in branch_predictor module
+    assign branch_update_pc = alu_pc_selected; // This is the resolved_pc input in branch_predictor module
     assign branch_update_target = actual_target;
     assign branch_update_taken = actual_taken;
 
@@ -441,7 +496,7 @@ module execute_stage (
         if (alu_result_valid) begin
             cdb0_valid = 1'b1;
             // Jumps write pc + 4 to rd, not the standard ALU result
-            if (is_jal || is_jalr) cdb0_result = alu_pc + 4;
+            if (is_jal || is_jalr) cdb0_result = alu_pc_selected + 4;
             else cdb0_result = alu_result_selected;
             cdb0_tag = alu_tag_selected;
         end 

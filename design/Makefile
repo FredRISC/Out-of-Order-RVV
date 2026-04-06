@@ -10,7 +10,7 @@ OUTPUT = riscv_sim
 
 # Verilator settings
 VERILATOR = verilator
-VFLAGS = --binary --timing --Wno-fatal --top-module tb_disambiguation
+VFLAGS = --binary --timing --Wno-fatal --top-module tb_branch
 
 # Source files
 SOURCES = \
@@ -43,6 +43,7 @@ SOURCES = \
 	tb/tb_LsqForwarding_vadd.sv \
 	tb/tb_disambiguation.sv \
 	tb/tb_vector_mem.sv \
+	tb/tb_branch.sv \
 
 
 # Default target
@@ -58,7 +59,7 @@ verilate:
 .PHONY: sim-verilator
 sim-verilator: verilate
 	@echo "Running Verilator simulation..."
-	./obj_dir/Vtb_disambiguation
+	./obj_dir/Vtb_branch
 
 # Compilation target
 .PHONY: compile

@@ -7,7 +7,7 @@ This project serves as a comprehensive study of OoO RISC-V architecture and a fo
 ## Architectural Highlights
 
 * **7-Stage Pipeline:** Fetch $\rightarrow$ Decode $\rightarrow$ Dispatch/Rename $\rightarrow$ Issue $\rightarrow$ RegRead $\rightarrow$ Execute $\rightarrow$ Commit (ROB).
-* **Hardware Renaming (RAT+PRF):** Eliminates the traditional Architectural Register File (ARF). Speculative data lives entirely in the PRF. The Reorder Buffer (ROB) handles in-order retirement by updating the Commit RAT, dynamically shifting architectural pointers without copying data.
+* **Hardware Renaming (RAT+PRF):** Eliminates the traditional Architectural Register File (ARF). Speculative data lives entirely in the PRF. The Reorder Buffer (ROB) handles in-order retirement by updating the Commit RAT, maintaining a precise architectural state to ensure clean exception handling and exact branch misprediction recovery.
 * **Unified Issue & Payload Datapath:** Scalar and vector instructions share the same Reservation Stations and `reg_read_stage` routing logic, minimizing footprint and complexity.
 * **Superscalar Backend:** While the frontend is 1-wide, the backend is fully superscalar, capable of issuing and executing up to 5 disjoint instruction types (ALU, MEM, MUL, DIV, VEC) simultaneously.
 * **Scheduled & Unscheduled Bypass Networks:** Both the scalar and vector datapaths utilize a dual-tier forwarding bus architecture—a scheduled bus for deterministic operations (ALU, MUL, etc.) and an unscheduled bus prioritized for variable-latency operations (Load/Store).
@@ -19,7 +19,7 @@ This project serves as a comprehensive study of OoO RISC-V architecture and a fo
 
 ## Quick Start & Verification
 
-The processor is verified using **Verilator**, which compiles the SystemVerilog RTL directly into a highly optimized, cycle-accurate C++ executable. The verification suite utilizes directed, **white-box SystemVerilog testbenches** to expose complex microarchitectural edge cases such as memory disambiguation flushes, cross-domain tag aliasing, and store-to-load forwarding.
+The processor is verified using **Verilator**, which compiles the SystemVerilog RTL directly into a highly optimized, cycle-accurate C++ executable. The verification suite utilizes directed, **white-box SystemVerilog testbenches** to expose complex microarchitectural edge cases such as memory disambiguation flushes, cross-domain tag aliasing, and store-to-load forwarding. *(Note: This repository is actively growing; more comprehensive verification suites and randomized testbenches are planned for future updates.)*
 
 ### Prerequisites
 * `make`
