@@ -106,7 +106,7 @@ module reservation_station #(
         logic busy;
     } rs_entry_t;
     
-    rs_entry_t [RS_SIZE-1:0] rs_entries;
+    rs_entry_t rs_entries [RS_SIZE-1:0];
     logic [RS_SIZE-1:0] entry_ready;
     
     // Free list management

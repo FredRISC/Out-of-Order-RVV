@@ -72,7 +72,7 @@ module reorder_buffer (
         logic valid; // signals this entry is allocated and valid
     } rob_entry_t;
     
-    rob_entry_t [`ROB_SIZE-1:0] rob_entries;
+    rob_entry_t rob_entries [`ROB_SIZE-1:0];
     logic [$clog2(`ROB_SIZE)-1:0] head_ptr, tail_ptr;
     logic [$clog2(`ROB_SIZE)-1:0] next_tail;
     
